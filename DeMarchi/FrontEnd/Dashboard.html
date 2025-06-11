@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         html { scroll-behavior: smooth; }
-        /* Estilos para transições suaves */
         .field-container {
             transition: all 0.3s ease-in-out;
             overflow: hidden;
@@ -22,6 +21,9 @@
             margin-top: 0 !important;
             padding: 0 !important;
         }
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -33,17 +35,16 @@
             <form id="login-form">
                 <div class="mb-4">
                     <label for="username" class="block text-gray-700 mb-2">Utilizador</label>
-                    <input type="text" id="username" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <input type="text" id="username" class="w-full px-3 py-2 border rounded-lg" required>
                 </div>
                 <div class="mb-6">
                     <label for="password" class="block text-gray-700 mb-2">Senha</label>
-                    <input type="password" id="password" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <input type="password" id="password" class="w-full px-3 py-2 border rounded-lg" required>
                 </div>
-                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors">Entrar</button>
+                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg">Entrar</button>
             </form>
             <p class="text-center text-sm text-gray-500 mt-4">
-                Não tem uma conta? 
-                <a href="register.html" class="font-medium text-blue-600 hover:underline">Crie uma agora</a>
+                Não tem uma conta? <a href="register.html" class="font-medium text-blue-600">Crie uma agora</a>
             </p>
         </div>
     </div>
@@ -51,115 +52,86 @@
     <!-- =========== Conteúdo Principal do Dashboard =========== -->
     <div id="dashboard-content" class="hidden">
         <header class="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-10">
-            <h1 class="text-3xl font-bold text-gray-800">Dashboard Financeiro</h1>
-            <div class="flex items-center gap-4">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Dashboard</h1>
+            <div class="flex items-center gap-2 md:gap-4">
                  <span id="welcome-user" class="text-gray-600 hidden md:block"></span>
-                 <button id="report-btn" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 transition">
-                    <i class="fas fa-file-pdf mr-2"></i>Relatório
-                 </button>
-                 <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition">Sair</button>
+                 <button id="monthly-report-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg"><i class="fas fa-chart-pie mr-2"></i>Mensal</button>
+                 <button id="weekly-report-btn" class="bg-teal-500 text-white px-4 py-2 rounded-lg"><i class="fas fa-file-pdf mr-2"></i>Semanal</button>
+                 <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-lg">Sair</button>
             </div>
         </header>
 
         <main class="p-4 md:p-8">
-            <!-- Resumo e Projeção -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="font-semibold text-gray-600">Gasto Total (Mês)</h3><p id="total-spent" class="text-3xl font-bold text-blue-600">R$ 0,00</p></div>
                 <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="font-semibold text-gray-600">Projeção Próximo Mês</h3><p id="next-month-projection" class="text-3xl font-bold text-green-600">R$ 0,00</p></div>
                 <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="font-semibold text-gray-600">Nº de Transações</h3><p id="total-transactions" class="text-3xl font-bold text-purple-600">0</p></div>
             </div>
 
-            <!-- Gráficos -->
-            <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
-                <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700 mb-4">Gastos por Mês</h3><canvas id="expenses-line-chart"></canvas></div>
-                <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700 mb-4">Distribuição por Conta</h3><canvas id="expenses-pie-chart"></canvas></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700 mb-4">Evolução dos Gastos</h3><canvas id="expenses-line-chart"></canvas></div>
+                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700 mb-4">Distribuição por Conta</h3><canvas id="expenses-pie-chart"></canvas></div>
             </div>
 
-            <!-- Formulário para Adicionar Gasto -->
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Comparação: Pessoal vs. Empresarial por Conta</h3>
+                <canvas id="mixed-type-chart"></canvas>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Gastos por Plano de Conta (Pessoal)</h3>
+                <canvas id="plan-chart"></canvas>
+            </div>
+
             <div class="bg-white p-6 rounded-lg shadow-md mb-8">
                 <h3 class="text-xl font-semibold text-gray-700 mb-4">Adicionar Novo Gasto</h3>
                 <form id="add-expense-form" class="space-y-6">
-                    <!-- Detalhes Principais -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="form-date" class="block text-sm font-medium text-gray-700">Data da Transação</label>
-                            <input type="date" id="form-date" name="transaction_date" class="mt-1 block w-full p-2 border rounded-lg" required>
-                        </div>
-                        <div>
-                            <label for="form-account" class="block text-sm font-medium text-gray-700">Conta</label>
-                            <select id="form-account" name="account" class="mt-1 block w-full p-2 border rounded-lg" required>
-                                <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
-                                <option value="Nu Vainer">Nu Vainer</option>
-                                <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
-                                <option value="PicPay Vainer">PicPay Vainer</option>
-                                <option value="Ducatto">Ducatto (Veículo)</option>
-                                <option value="Master">Master (Veículo)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="form-amount" class="block text-sm font-medium text-gray-700">Valor (R$)</label>
-                            <input type="number" step="0.01" id="form-amount" name="amount" placeholder="50.99" class="mt-1 block w-full p-2 border rounded-lg" required>
-                        </div>
-                        <div>
-                             <label for="form-description" class="block text-sm font-medium text-gray-700">Descrição</label>
-                            <input type="text" id="form-description" name="description" placeholder="Ex: Almoço no restaurante" class="mt-1 block w-full p-2 border rounded-lg" required>
-                        </div>
+                        <div><label for="form-date" class="block text-sm font-medium">Data</label><input type="date" id="form-date" name="transaction_date" class="mt-1 block w-full p-2 border rounded-lg" required></div>
+                        <div><label for="form-account" class="block text-sm font-medium">Conta</label><select id="form-account" name="account" class="mt-1 block w-full p-2 border rounded-lg" required><option>Nu Bank Ketlyn</option><option>Nu Vainer</option><option>Ourocard Ketlyn</option><option>PicPay Vainer</option><option>Ducatto</option><option>Master</option></select></div>
+                        <div><label for="form-amount" class="block text-sm font-medium">Valor (R$)</label><input type="number" step="0.01" id="form-amount" name="amount" placeholder="50.99" class="mt-1 block w-full p-2 border rounded-lg" required></div>
+                        <div><label for="form-description" class="block text-sm font-medium">Descrição</label><input type="text" id="form-description" name="description" placeholder="Ex: Almoço" class="mt-1 block w-full p-2 border rounded-lg" required></div>
                     </div>
-                    
-                    <!-- Toggle de Tipo de Gasto -->
-                    <div class="border-t pt-4">
-                        <div class="flex items-center">
-                            <input type="checkbox" id="form-is-business" name="is_business_expense" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                            <label for="form-is-business" class="ml-2 block text-sm font-medium text-gray-800">Marcar como Gasto Empresarial</label>
-                        </div>
-                    </div>
-
-                    <!-- Campos Condicionais -->
+                    <div class="border-t pt-4"><div class="flex items-center"><input type="checkbox" id="form-is-business" name="is_business_expense" class="h-4 w-4"><label for="form-is-business" class="ml-2 block text-sm font-medium">Marcar como Gasto Empresarial</label></div></div>
                     <div class="pl-2 space-y-4">
-                        <!-- Campos para Gasto Pessoal (Visível por Padrão) -->
-                        <div id="personal-fields-container" class="field-container">
-                             <label for="form-plan-code" class="block text-sm font-medium text-gray-700">Plano de Conta Pessoal</label>
-                             <input type="number" id="form-plan-code" name="account_plan_code" placeholder="Código de 1 a 45" class="mt-1 block w-full md:w-1/2 p-2 border rounded-lg">
-                        </div>
-                        <!-- Campos para Gasto Empresarial (Escondido por Padrão) -->
-                        <div id="business-fields-container" class="field-container hidden space-y-4">
-                            <div class="flex items-center">
-                                <input type="checkbox" id="form-has-invoice-check" name="has_invoice" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                                <label for="form-has-invoice-check" class="ml-2 block text-sm text-gray-700">Tem Nota Fiscal associada?</label>
-                            </div>
-                            <div>
-                                <label for="form-invoice-file" class="block text-sm font-medium text-gray-700">Upload da Nota Fiscal (Opcional)</label>
-                                <input type="file" id="form-invoice-file" name="invoice" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-                            </div>
-                        </div>
+                        <div id="personal-fields-container" class="field-container"><label for="form-plan-code" class="block text-sm font-medium">Plano de Conta Pessoal</label><input type="number" id="form-plan-code" name="account_plan_code" placeholder="Código de 1 a 45" class="mt-1 block w-full md:w-1/2 p-2 border rounded-lg"></div>
+                        <div id="business-fields-container" class="field-container hidden space-y-4"><div class="flex items-center"><input type="checkbox" id="form-has-invoice-check" name="has_invoice" class="h-4 w-4"><label for="form-has-invoice-check" class="ml-2 block text-sm">Tem Nota Fiscal?</label></div><div><label for="form-invoice-file" class="block text-sm font-medium">Upload da Nota</label><input type="file" id="form-invoice-file" name="invoice" class="mt-1 block w-full text-sm"></div></div>
                     </div>
-
-                    <div class="border-t pt-4 text-right">
-                        <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition">Adicionar Gasto</button>
-                    </div>
+                    <div class="border-t pt-4 text-right"><button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Adicionar Gasto</button></div>
                 </form>
             </div>
 
-            <!-- Tabela de Histórico de Transações -->
             <div class="bg-white p-6 rounded-lg shadow-md">
-                 <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
-                    <h3 class="text-xl font-semibold text-gray-700">Histórico de Transações</h3>
-                    <div class="flex gap-2">
-                         <select id="filter-year" class="p-2 border rounded-lg"></select>
-                         <select id="filter-month" class="p-2 border rounded-lg"></select>
-                    </div>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead class="bg-gray-50"><tr class="border-b"><th class="p-3">Data</th><th class="p-3">Descrição</th><th class="p-3">Valor</th><th class="p-3">Conta</th><th class="p-3">Tipo</th><th class="p-3">Nota Fiscal</th><th class="p-3">Ações</th></tr></thead>
-                        <tbody id="expenses-table-body"></tbody>
-                    </table>
-                </div>
+                 <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-semibold">Histórico de Transações</h3><div class="flex gap-2"><select id="filter-year" class="p-2 border rounded-lg"></select><select id="filter-month" class="p-2 border rounded-lg"></select></div></div>
+                <div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-gray-50"><tr><th class="p-3">Data</th><th class="p-3">Descrição</th><th class="p-3">Valor</th><th class="p-3">Conta</th><th class="p-3">Tipo</th><th class="p-3">Nota</th><th class="p-3">Ações</th></tr></thead><tbody id="expenses-table-body"></tbody></table></div>
             </div>
         </main>
     </div>
-    
-    <!-- O modal de edição pode ser adicionado aqui quando necessário -->
+
+    <div id="report-modal" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h3 class="text-2xl font-bold mb-6">Gerar Relatório Mensal</h3>
+            <form id="report-form">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="report-year" class="block text-sm font-medium text-gray-700">Ano</label>
+                        <select id="report-year" class="mt-1 block w-full p-2 border rounded-lg"></select>
+                    </div>
+                    <div>
+                        <label for="report-month" class="block text-sm font-medium text-gray-700">Mês</label>
+                        <select id="report-month" class="mt-1 block w-full p-2 border rounded-lg"></select>
+                    </div>
+                </div>
+                <div class="mt-8 flex justify-end gap-4">
+                    <button type="button" id="cancel-report-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg">
+                        <span id="report-generate-text">Gerar PDF</span>
+                        <span id="report-loading-text" class="hidden">A gerar...</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
     
     <script src="dashboard.js"></script>
 </body>
