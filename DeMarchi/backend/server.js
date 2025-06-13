@@ -100,26 +100,68 @@ app.post('/api/login', async (req, res) => {
 // --- 8. ROTAS PROTEGIDAS ---
 app.post('/api/expenses', authenticateToken, upload.single('invoice'), async (req, res) => {
     try {
-        const { transaction_date, amount, description, account, account_plan_code } = req.body;
+        const {
+            transaction_date,
+            amount, // Valor da parcela
+            description,
+            account,
+            account_plan_code,
+            total_installments // Número total de parcelas
+        } = req.body;
+
         const is_business_expense = req.body.is_business_expense === 'true';
         const has_invoice = req.body.has_invoice === 'true';
         const userId = req.user.id;
         const invoicePath = req.file ? req.file.path : null;
-        if (!transaction_date || !amount || !description || !account) {
+
+        // Validação dos campos obrigatórios
+        if (!transaction_date || !amount || !description || !account || !total_installments) {
             return res.status(400).json({ message: 'Campos obrigatórios em falta.' });
         }
-        const sql = `
-            INSERT INTO expenses (user_id, transaction_date, amount, description, account, is_business_expense, account_plan_code, has_invoice, invoice_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        const params = [
-            userId, transaction_date, amount, description, account,
-            is_business_expense,
-            is_business_expense ? null : (account_plan_code || null),
-            is_business_expense ? has_invoice : null,
-            is_business_expense ? invoicePath : null
-        ];
-        await pool.query(sql, params);
-        res.status(201).json({ message: 'Gasto adicionado com sucesso!' });
+
+        const installmentAmount = parseFloat(amount);
+        const numberOfInstallments = parseInt(total_installments, 10);
+
+        if (isNaN(installmentAmount) || isNaN(numberOfInstallments)) {
+            return res.status(400).json({ message: 'Valor e número de parcelas devem ser números válidos.' });
+        }
+
+        const calculatedTotalAmount = installmentAmount * numberOfInstallments;
+
+        for (let i = 0; i < numberOfInstallments; i++) {
+            const installmentDate = new Date(transaction_date);
+            installmentDate.setMonth(installmentDate.getMonth() + i);
+
+            const installmentDescription = numberOfInstallments > 1
+                ? `${description} (Parcela ${i + 1}/${numberOfInstallments})`
+                : description;
+
+            const sql = `
+                INSERT INTO expenses (
+                    user_id, transaction_date, amount, description, account,
+                    is_business_expense, account_plan_code, has_invoice, invoice_path,
+                    total_purchase_amount, installment_number, total_installments
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+            const params = [
+                userId,
+                installmentDate.toISOString().slice(0, 10),
+                installmentAmount.toFixed(2),
+                installmentDescription,
+                account,
+                is_business_expense,
+                is_business_expense ? null : (account_plan_code || null),
+                (is_business_expense && i === 0 && has_invoice) ? 1 : null,
+                (is_business_expense && i === 0 && has_invoice) ? invoicePath : null,
+                calculatedTotalAmount.toFixed(2),
+                i + 1,
+                numberOfInstallments
+            ];
+
+            await pool.query(sql, params);
+        }
+
+        res.status(201).json({ message: 'Gasto(s) parcelado(s) adicionado(s) com sucesso!' });
     } catch (error) {
         console.error('ERRO AO ADICIONAR GASTO:', error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor ao adicionar o gasto.' });
