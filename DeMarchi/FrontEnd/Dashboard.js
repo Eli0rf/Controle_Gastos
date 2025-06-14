@@ -131,16 +131,22 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAndRenderDashboardMetrics() {
         const token = getToken();
         if (!token) return;
+    
         const params = new URLSearchParams({ year: filterYear.value, month: filterMonth.value });
         try {
-            const response = await fetch(`${API_BASE_URL}/dashboard?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await fetch(`${API_BASE_URL}/dashboard?${params}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Erro ao buscar métricas do dashboard.');
             const data = await response.json();
-            if (projectionEl) projectionEl.textContent = `R$ ${data.projection.nextMonthEstimate || '0.00'}`;
-            renderLineChart(data.lineChartData || []);
-            renderPieChart(data.pieChartData || []);
-            renderPlanChart(data.planChartData || []);
-            renderMixedTypeChart(data.mixedTypeData || []);
-        } catch (error) { console.error('Erro ao buscar dados do dashboard:', error); }
+    
+            // Atualiza o elemento com o valor retornado
+            if (projectionEl) {
+                projectionEl.textContent = `R$ ${data.projection?.nextMonthEstimate || '0.00'}`;
+            }
+        } catch (error) {
+            console.error('Erro ao buscar métricas do dashboard:', error);
+        }
     }
 
     function renderExpensesTable(expenses = []) {

@@ -209,40 +209,27 @@ app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
 app.get('/api/dashboard', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const { year, month } = req.query;
+
     try {
-        const baseParams = [userId];
-        const monthFilter = ` AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?`;
-        const paramsWithMonth = [...baseParams];
-        if (year && month) {
-            paramsWithMonth.push(year, month);
+        if (!year || !month) {
+            return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
         }
 
-        const [lineChartData] = await pool.query(`SELECT DATE_FORMAT(transaction_date, '%Y-%m') as month, SUM(amount) as total FROM expenses WHERE user_id = ? GROUP BY month ORDER BY month ASC`, [userId]);
-        const [pieChartData] = await pool.query(`SELECT account, SUM(amount) as total FROM expenses WHERE user_id = ? ${year && month ? monthFilter : ''} GROUP BY account`, paramsWithMonth);
-        const [planChartData] = await pool.query(`SELECT account_plan_code, SUM(amount) as total FROM expenses WHERE user_id = ? AND is_business_expense = FALSE AND account_plan_code IS NOT NULL ${year && month ? monthFilter : ''} GROUP BY account_plan_code ORDER BY total DESC`, paramsWithMonth);
-        const [mixedTypeData] = await pool.query(`
-            SELECT 
-                account,
-                SUM(CASE WHEN is_business_expense = FALSE THEN amount ELSE 0 END) as personal_total,
-                SUM(CASE WHEN is_business_expense = TRUE THEN amount ELSE 0 END) as business_total
-            FROM expenses 
-            WHERE user_id = ? ${year && month ? monthFilter : ''}
-            GROUP BY account
-            ORDER BY personal_total DESC, business_total DESC
-        `, paramsWithMonth);
-        const [last3Months] = await pool.query(`SELECT SUM(amount) as total FROM expenses WHERE user_id = ? AND transaction_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH) GROUP BY YEAR(transaction_date), MONTH(transaction_date)`, [userId]);
-        
-        let projection = 0;
-        if (last3Months.length > 0) {
-            projection = last3Months.reduce((acc, curr) => acc + parseFloat(curr.total), 0) / last3Months.length;
-        }
+        // Calcula o próximo mês e ano
+        const nextMonth = parseInt(month, 10) === 12 ? 1 : parseInt(month, 10) + 1;
+        const nextYear = parseInt(month, 10) === 12 ? parseInt(year, 10) + 1 : parseInt(year, 10);
 
-        res.json({ 
-            lineChartData, 
-            pieChartData, 
-            planChartData, 
-            mixedTypeData,
-            projection: { nextMonthEstimate: projection.toFixed(2) } 
+        // Consulta os gastos do próximo mês
+        const [nextMonthData] = await pool.query(
+            `SELECT SUM(amount) AS total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?`,
+            [userId, nextYear, nextMonth]
+        );
+
+        // Certifique-se de que o valor retornado é tratado corretamente
+        const nextMonthProjection = parseFloat(nextMonthData[0]?.total || 0);
+
+        res.json({
+            projection: { nextMonthEstimate: nextMonthProjection.toFixed(2) },
         });
     } catch (error) {
         console.error('Erro ao buscar dados do dashboard:', error);
@@ -269,3 +256,4 @@ app.listen(PORT, async () => {
         process.exit(1);
     }
 });
+
