@@ -210,27 +210,63 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const { year, month } = req.query;
 
+    if (!year || !month) {
+        return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
+    }
+
     try {
-        if (!year || !month) {
-            return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
-        }
+        const [
+            projectionData,
+            lineChartData,
+            pieChartData,
+            mixedTypeChartData,
+            planChartData
+        ] = await Promise.all([
+            // Projeção para o próximo mês
+            pool.query(
+                `SELECT SUM(amount) AS total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?`,
+                [userId, parseInt(month, 10) === 12 ? parseInt(year, 10) + 1 : year, parseInt(month, 10) === 12 ? 1 : parseInt(month, 10) + 1]
+            ),
+            // Evolução dos Gastos (Diário para o mês selecionado)
+            pool.query(
+                `SELECT DAY(transaction_date) as day, SUM(amount) as total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ? GROUP BY DAY(transaction_date) ORDER BY DAY(transaction_date)`,
+                [userId, year, month]
+            ),
+            // Distribuição por Conta (Pie Chart)
+            pool.query(
+                `SELECT account, SUM(amount) as total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ? GROUP BY account`,
+                [userId, year, month]
+            ),
+            // Comparação Pessoal vs. Empresarial (Mixed Chart)
+            pool.query(
+                `SELECT account,
+                        SUM(CASE WHEN is_business_expense = 0 THEN amount ELSE 0 END) as personal_total,
+                        SUM(CASE WHEN is_business_expense = 1 THEN amount ELSE 0 END) as business_total
+                 FROM expenses
+                 WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
+                 GROUP BY account`,
+                [userId, year, month]
+            ),
+            // Gastos por Plano de Conta (Bar Chart)
+            pool.query(
+                `SELECT account_plan_code, SUM(amount) as total
+                 FROM expenses
+                 WHERE user_id = ? AND is_business_expense = 0 AND account_plan_code IS NOT NULL AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
+                 GROUP BY account_plan_code`,
+                [userId, year, month]
+            )
+        ]);
 
-        // Calcula o próximo mês e ano
-        const nextMonth = parseInt(month, 10) === 12 ? 1 : parseInt(month, 10) + 1;
-        const nextYear = parseInt(month, 10) === 12 ? parseInt(year, 10) + 1 : parseInt(year, 10);
-
-        // Consulta os gastos do próximo mês
-        const [nextMonthData] = await pool.query(
-            `SELECT SUM(amount) AS total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?`,
-            [userId, nextYear, nextMonth]
-        );
-
-        // Certifique-se de que o valor retornado é tratado corretamente
-        const nextMonthProjection = parseFloat(nextMonthData[0]?.total || 0);
+        const nextMonthProjection = parseFloat(projectionData[0][0]?.total || 0);
 
         res.json({
             projection: { nextMonthEstimate: nextMonthProjection.toFixed(2) },
+            lineChartData: lineChartData[0],
+            pieChartData: pieChartData[0],
+            mixedTypeChartData: mixedTypeChartData[0],
+            planChartData: planChartData[0]
         });
+
     } catch (error) {
         console.error('Erro ao buscar dados do dashboard:', error);
         res.status(500).json({ message: 'Erro ao buscar dados do dashboard.' });
@@ -256,4 +292,3 @@ app.listen(PORT, async () => {
         process.exit(1);
     }
 });
-

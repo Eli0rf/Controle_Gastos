@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function populateFilterOptions() {
         if (!filterYear || !filterMonth) return;
         filterYear.innerHTML = '';
-        filterMonth.innerHTML = '<option value="">Todos os Meses</option>';
+        filterMonth.innerHTML = '';
         const currentYear = new Date().getFullYear();
         for (let i = currentYear; i >= currentYear - 5; i--) filterYear.add(new Option(i, i));
         const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -140,10 +140,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error('Erro ao buscar métricas do dashboard.');
             const data = await response.json();
     
-            // Atualiza o elemento com o valor retornado
             if (projectionEl) {
                 projectionEl.textContent = `R$ ${data.projection?.nextMonthEstimate || '0.00'}`;
             }
+
+            renderLineChart(data.lineChartData);
+            renderPieChart(data.pieChartData);
+            renderMixedTypeChart(data.mixedTypeChartData);
+            renderPlanChart(data.planChartData);
+
         } catch (error) {
             console.error('Erro ao buscar métricas do dashboard:', error);
         }
@@ -173,7 +178,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const ctx = document.getElementById('expenses-line-chart')?.getContext('2d');
         if (!ctx) return;
         if (expensesLineChart) expensesLineChart.destroy();
-        expensesLineChart = new Chart(ctx, { type: 'line', data: { labels: data.map(d => d.month), datasets: [{ label: 'Gastos Mensais', data: data.map(d => d.total), borderColor: '#3B82F6', tension: 0.1 }] } });
+    
+        const year = parseInt(filterYear.value, 10);
+        const month = parseInt(filterMonth.value, 10);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        
+        const labels = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+        const chartData = new Array(daysInMonth).fill(0);
+    
+        data.forEach(d => {
+            chartData[d.day - 1] = d.total;
+        });
+    
+        expensesLineChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: `Gastos Diários em ${filterMonth.options[filterMonth.selectedIndex].text}`,
+                    data: chartData,
+                    borderColor: '#3B82F6',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Dia do Mês'
+                        }
+                    }
+                }
+            }
+        });
     }
 
     function renderPieChart(data = []) {
