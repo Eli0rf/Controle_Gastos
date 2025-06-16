@@ -155,25 +155,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderExpensesTable(expenses = []) {
-        if (!expensesTableBody) return;
-        expensesTableBody.innerHTML = '';
-        let totalSpent = 0;
-        if (expenses.length > 0) {
-            expenses.forEach(expense => {
-                totalSpent += parseFloat(expense.amount);
-                const invoiceLink = expense.invoice_path ? `<a href="${FILE_BASE_URL}/${expense.invoice_path}" target="_blank" class="text-blue-600"><i class="fas fa-file-invoice"></i></a>` : 'N/A';
-                const row = document.createElement('tr');
-                row.className = 'border-b hover:bg-gray-50';
-                row.innerHTML = `<td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</td><td class="p-3">${expense.description}</td><td class="p-3 text-red-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td><td class="p-3">${expense.account}</td><td class="p-3">${expense.is_business_expense ? 'Empresa' : 'Pessoal'}</td><td class="p-3 text-center">${invoiceLink}</td><td class="p-3"><button class="text-blue-600 mr-2 edit-btn" data-id="${expense.id}"><i class="fas fa-edit"></i></button><button class="text-red-600 delete-btn" data-id="${expense.id}"><i class="fas fa-trash"></i></button></td>`;
-                expensesTableBody.appendChild(row);
-            });
-        } else {
-            expensesTableBody.innerHTML = `<tr><td colspan="7" class="text-center p-4">Nenhuma despesa encontrada.</td></tr>`;
-        }
-        if (totalSpentEl) totalSpentEl.textContent = `R$ ${totalSpent.toFixed(2)}`;
-        if (totalTransactionsEl) totalTransactionsEl.textContent = expenses.length;
+    if (!expensesTableBody) return;
+    expensesTableBody.innerHTML = '';
+    let totalSpent = 0;
+    if (expenses.length > 0) {
+        expenses.forEach(expense => {
+            totalSpent += parseFloat(expense.amount);
+            const invoiceLink = expense.invoice_path ? `<a href="${FILE_BASE_URL}/${expense.invoice_path}" target="_blank" class="text-blue-600"><i class="fas fa-file-invoice"></i></a>` : 'N/A';
+            const planCode = expense.account_plan_code !== null && expense.account_plan_code !== undefined ? expense.account_plan_code : '-';
+            const row = document.createElement('tr');
+            row.className = 'border-b hover:bg-gray-50';
+            row.innerHTML = `
+                <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</td>
+                <td class="p-3">${expense.description}</td>
+                <td class="p-3 text-red-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
+                <td class="p-3">${expense.account}</td>
+                <td class="p-3">${expense.is_business_expense ? 'Empresa' : 'Pessoal'}</td>
+                <td class="p-3">${planCode}</td>
+                <td class="p-3 text-center">${invoiceLink}</td>
+                <td class="p-3">
+                    <button class="text-blue-600 mr-2 edit-btn" data-id="${expense.id}"><i class="fas fa-edit"></i></button>
+                    <button class="text-red-600 delete-btn" data-id="${expense.id}"><i class="fas fa-trash"></i></button>
+                </td>
+            `;
+            expensesTableBody.appendChild(row);
+        });
+    } else {
+        expensesTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-4">Nenhuma despesa encontrada.</td></tr>`;
     }
-
+    if (totalSpentEl) totalSpentEl.textContent = `R$ ${totalSpent.toFixed(2)}`;
+    if (totalTransactionsEl) totalTransactionsEl.textContent = expenses.length;
+}
     function renderLineChart(data = []) {
         const ctx = document.getElementById('expenses-line-chart')?.getContext('2d');
         if (!ctx) return;

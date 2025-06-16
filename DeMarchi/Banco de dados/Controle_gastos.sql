@@ -1,5 +1,6 @@
 -- MySQL dump 10.13  Distrib 8.0.33, for Win64 (x86_64)
---
+CREATE DATABASE controle_gastos /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */;
+USE `controle_gastos`;
 -- Host: 127.0.0.1    Database: controle_gastos
 -- ------------------------------------------------------
 -- Server version	5.5.5-10.4.32-MariaDB
