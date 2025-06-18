@@ -1,8 +1,7 @@
 /**
  * dashboard.js - Versão Final e Completa
  */
-document.addEventListener('DOMContentLoaded', () => {
-
+document.addEventListener('DOMContentLoaded', function() {
     const API_BASE_URL = 'http://localhost:3000/api';
     const FILE_BASE_URL = 'http://localhost:3000';
 
@@ -21,7 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalSpentEl = document.getElementById('total-spent');
     const totalTransactionsEl = document.getElementById('total-transactions');
     const projectionEl = document.getElementById('next-month-projection');
-    
     const monthlyReportBtn = document.getElementById('monthly-report-btn');
     const weeklyReportBtn = document.getElementById('weekly-report-btn');
     const reportModal = document.getElementById('report-modal');
@@ -29,8 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelReportBtn = document.getElementById('cancel-report-btn');
     const reportGenerateText = document.getElementById('report-generate-text');
     const reportLoadingText = document.getElementById('report-loading-text');
-    
-    let expensesLineChart, expensesPieChart, planChart, mixedTypeChart;
+
+    let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
+
+    function getToken() {
+        return localStorage.getItem('token');
+    }
 
     function addEventListeners() {
         if (loginForm) loginForm.addEventListener('submit', handleLogin);
@@ -44,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cancelReportBtn) cancelReportBtn.addEventListener('click', closeReportModal);
         if (reportForm) reportForm.addEventListener('submit', handleMonthlyReportDownload);
         if (businessCheckbox) businessCheckbox.addEventListener('change', toggleExpenseFields);
+        document.getElementById('filter-account').addEventListener('change', fetchAllData);
     }
 
     async function handleLogin(e) {
@@ -78,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dashboardContent) dashboardContent.style.display = 'block';
         if (welcomeUserSpan) welcomeUserSpan.textContent = `Bem-vindo, ${localStorage.getItem('username')}!`;
         initializeDashboard();
+        checkMonthlyReportReminder();
     }
 
     function showLogin() {
@@ -86,11 +90,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function initializeDashboard() {
+        populateAccountFilter();
         populateFilterOptions();
         fetchAllData();
         toggleExpenseFields();
     }
-    
+
     function populateFilterOptions() {
         if (!filterYear || !filterMonth) return;
         filterYear.innerHTML = '';
@@ -102,24 +107,184 @@ document.addEventListener('DOMContentLoaded', () => {
         filterYear.value = currentYear;
         filterMonth.value = new Date().getMonth() + 1;
     }
-    
+
     function toggleExpenseFields() {
         if (!personalFields || !businessFields || !businessCheckbox) return;
         personalFields.classList.toggle('hidden', businessCheckbox.checked);
         businessFields.classList.toggle('hidden', !businessCheckbox.checked);
     }
 
-    const getToken = () => localStorage.getItem('token');
-
     async function fetchAllData() {
         await fetchAndRenderExpenses();
         await fetchAndRenderDashboardMetrics();
+        await fetchAndRenderGoalsChart();
     }
-    
+
+    // --- Busca metas e renderiza gráfico de metas/alertas ---
+    async function fetchAndRenderGoalsChart() {
+        const token = getToken();
+        if (!token) return;
+
+        const params = new URLSearchParams({
+            year: filterYear.value,
+            month: filterMonth.value
+        });
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/expenses-goals?${params.toString()}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Erro ao buscar metas.');
+            const data = await response.json();
+
+            // Notificações de metas (alertas)
+            data.forEach(item => {
+                if (item.Alerta && !sessionStorage.getItem(`alerta_${item.PlanoContasID}_${item.Alerta.percentual}_${filterYear.value}_${filterMonth.value}`)) {
+                    showNotification(item.Alerta.mensagem);
+                    sessionStorage.setItem(`alerta_${item.PlanoContasID}_${item.Alerta.percentual}_${filterYear.value}_${filterMonth.value}`, 'true');
+                }
+            });
+
+            renderGoalsChart(data);
+            renderGoalsPlanChart(data);
+        } catch (error) {
+            console.error('Erro ao buscar metas:', error);
+        }
+    }
+
+    function renderGoalsChart(data = []) {
+        const ctx = document.getElementById('goals-chart')?.getContext('2d');
+        if (!ctx) return;
+        if (goalsChart) goalsChart.destroy();
+
+        const labels = data.map(item => `Plano ${item.PlanoContasID}`);
+        const values = data.map(item => Number(item.Total));
+        const metas = data.map(item => Number(item.Meta));
+
+        goalsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Gastos Atuais',
+                        data: values,
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Meta',
+                        data: metas,
+                        type: 'line',
+                        fill: false,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    function renderGoalsPlanChart(data = []) {
+        const ctx = document.getElementById('goals-plan-chart')?.getContext('2d');
+        if (!ctx) return;
+        if (goalsPlanChart) goalsPlanChart.destroy();
+
+        const sorted = [...data].sort((a, b) => a.PlanoContasID - b.PlanoContasID);
+
+        const labels = sorted.map(item => `Plano ${item.PlanoContasID}`);
+        const metas = sorted.map(item => Number(item.Meta));
+        const atingido = sorted.map(item => Number(item.Total));
+        const percentuais = sorted.map((item, i) =>
+            metas[i] > 0 ? Math.round((atingido[i] / metas[i]) * 100) : 0
+        );
+
+        goalsPlanChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Meta',
+                        data: metas,
+                        backgroundColor: 'rgba(75, 192, 192, 0.4)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Atingido',
+                        data: atingido,
+                        backgroundColor: 'rgba(255, 99, 132, 0.4)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1,
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'start',
+                            color: '#333',
+                            font: { weight: 'bold' },
+                            formatter: function(value, context) {
+                                const i = context.dataIndex;
+                                return metas[i] > 0 ? percentuais[i] + '%' : '';
+                            }
+                        }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: { mode: 'index', intersect: false },
+                    legend: { position: 'top' },
+                    datalabels: {
+                        display: function(context) {
+                            // Só mostra percentual na barra "Atingido"
+                            return context.dataset.label === 'Atingido';
+                        }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+    }
+
+    function showNotification(message, type = 'info') {
+        const toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) return;
+
+        const toast = document.createElement('div');
+        toast.className = `
+            px-4 py-3 rounded shadow-lg text-white mb-2 animate-fade-in
+            ${type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-green-600' : 'bg-blue-600'}
+        `;
+        toast.textContent = message;
+
+        toastContainer.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.add('opacity-0');
+            setTimeout(() => toast.remove(), 500);
+        }, 3500);
+    }
+
     async function fetchAndRenderExpenses() {
         const token = getToken();
         if (!token) return showLogin();
-        const params = new URLSearchParams({ year: filterYear.value, month: filterMonth.value });
+        const selectedAccount = document.getElementById('filter-account')?.value || '';
+        const params = new URLSearchParams({
+            year: filterYear.value,
+            month: filterMonth.value,
+            account: selectedAccount
+        });
         try {
             const response = await fetch(`${API_BASE_URL}/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
             if (response.status === 401) return showLogin();
@@ -131,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAndRenderDashboardMetrics() {
         const token = getToken();
         if (!token) return;
-    
+
         const params = new URLSearchParams({ year: filterYear.value, month: filterMonth.value });
         try {
             const response = await fetch(`${API_BASE_URL}/dashboard?${params}`, {
@@ -139,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) throw new Error('Erro ao buscar métricas do dashboard.');
             const data = await response.json();
-    
+
             if (projectionEl) {
                 projectionEl.textContent = `R$ ${data.projection?.nextMonthEstimate || '0.00'}`;
             }
@@ -155,53 +320,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderExpensesTable(expenses = []) {
-    if (!expensesTableBody) return;
-    expensesTableBody.innerHTML = '';
-    let totalSpent = 0;
-    if (expenses.length > 0) {
-        expenses.forEach(expense => {
-            totalSpent += parseFloat(expense.amount);
-            const invoiceLink = expense.invoice_path ? `<a href="${FILE_BASE_URL}/${expense.invoice_path}" target="_blank" class="text-blue-600"><i class="fas fa-file-invoice"></i></a>` : 'N/A';
-            const planCode = expense.account_plan_code !== null && expense.account_plan_code !== undefined ? expense.account_plan_code : '-';
-            const row = document.createElement('tr');
-            row.className = 'border-b hover:bg-gray-50';
-            row.innerHTML = `
-                <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</td>
-                <td class="p-3">${expense.description}</td>
-                <td class="p-3 text-red-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
-                <td class="p-3">${expense.account}</td>
-                <td class="p-3">${expense.is_business_expense ? 'Empresa' : 'Pessoal'}</td>
-                <td class="p-3">${planCode}</td>
-                <td class="p-3 text-center">${invoiceLink}</td>
-                <td class="p-3">
-                    <button class="text-blue-600 mr-2 edit-btn" data-id="${expense.id}"><i class="fas fa-edit"></i></button>
-                    <button class="text-red-600 delete-btn" data-id="${expense.id}"><i class="fas fa-trash"></i></button>
-                </td>
-            `;
-            expensesTableBody.appendChild(row);
-        });
-    } else {
-        expensesTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-4">Nenhuma despesa encontrada.</td></tr>`;
+        if (!expensesTableBody) return;
+        expensesTableBody.innerHTML = '';
+        let totalSpent = 0;
+        if (expenses.length > 0) {
+            expenses.forEach(expense => {
+                totalSpent += parseFloat(expense.amount);
+                const invoiceLink = expense.invoice_path ? `<a href="${FILE_BASE_URL}/${expense.invoice_path}" target="_blank" class="text-blue-600"><i class="fas fa-file-invoice"></i></a>` : 'N/A';
+                const planCode = expense.account_plan_code !== null && expense.account_plan_code !== undefined ? expense.account_plan_code : '-';
+                const row = document.createElement('tr');
+                row.className = 'border-b hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</td>
+                    <td class="p-3">${expense.description}</td>
+                    <td class="p-3 text-red-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
+                    <td class="p-3">${expense.account}</td>
+                    <td class="p-3">${expense.is_business_expense ? 'Empresa' : 'Pessoal'}</td>
+                    <td class="p-3">${planCode}</td>
+                    <td class="p-3 text-center">${invoiceLink}</td>
+                    <td class="p-3">
+                        <button class="text-blue-600 mr-2 edit-btn" data-id="${expense.id}"><i class="fas fa-edit"></i></button>
+                        <button class="text-red-600 delete-btn" data-id="${expense.id}"><i class="fas fa-trash"></i></button>
+                    </td>
+                `;
+                expensesTableBody.appendChild(row);
+            });
+        } else {
+            expensesTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-4">Nenhuma despesa encontrada.</td></tr>`;
+        }
+        if (totalSpentEl) totalSpentEl.textContent = `R$ ${totalSpent.toFixed(2)}`;
+        if (totalTransactionsEl) totalTransactionsEl.textContent = expenses.length;
     }
-    if (totalSpentEl) totalSpentEl.textContent = `R$ ${totalSpent.toFixed(2)}`;
-    if (totalTransactionsEl) totalTransactionsEl.textContent = expenses.length;
-}
+
     function renderLineChart(data = []) {
         const ctx = document.getElementById('expenses-line-chart')?.getContext('2d');
         if (!ctx) return;
         if (expensesLineChart) expensesLineChart.destroy();
-    
+
         const year = parseInt(filterYear.value, 10);
         const month = parseInt(filterMonth.value, 10);
         const daysInMonth = new Date(year, month, 0).getDate();
-        
+
         const labels = Array.from({ length: daysInMonth }, (_, i) => i + 1);
         const chartData = new Array(daysInMonth).fill(0);
-    
+
         data.forEach(d => {
             chartData[d.day - 1] = d.total;
         });
-    
+
         expensesLineChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -232,7 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (expensesPieChart) expensesPieChart.destroy();
         expensesPieChart = new Chart(ctx, { type: 'pie', data: { labels: data.map(d => d.account), datasets: [{ data: data.map(d => d.total), backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'] }] } });
     }
-    
+
     function renderPlanChart(data = []) {
         const ctx = document.getElementById('plan-chart')?.getContext('2d');
         if (!ctx) return;
@@ -269,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAllData();
         } catch (error) { alert(`Erro: ${error.message}`); }
     }
-    
+
     function handleTableClick(e) {
         if (e.target.closest('.edit-btn')) alert('Funcionalidade de edição não implementada.');
         if (e.target.closest('.delete-btn')) { if (confirm('Tem a certeza?')) deleteExpense(e.target.closest('.delete-btn').dataset.id); }
@@ -282,11 +448,30 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAllData();
         } catch (error) { alert(`Erro: ${error.message}`); }
     }
-    
+
     async function handleWeeklyReportDownload() {
-        // ... (código da função de download semanal) ...
+        const token = getToken();
+        if (!token) return showLogin();
+        try {
+            const response = await fetch(`${API_BASE_URL}/reports/weekly`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Erro ao gerar relatório semanal.');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'relatorio-semanal.pdf';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            showNotification('Relatório semanal gerado com sucesso!', 'success');
+        } catch (error) {
+            showNotification(error.message, 'error');
+        }
     }
-    
+
     function openReportModal() {
         populateReportModalFilters();
         if(reportModal) {
@@ -319,34 +504,77 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleMonthlyReportDownload(e) {
         e.preventDefault();
         const year = document.getElementById('report-year').value;
-        const month = document.getElementById('report-month').value;
+         const month = document.getElementById('report-month').value;
+        const account = document.getElementById('filter-account')?.value || '';
         const submitButton = e.submitter;
 
         if(reportGenerateText) reportGenerateText.classList.add('hidden');
         if(reportLoadingText) reportLoadingText.classList.remove('hidden');
         if(submitButton) submitButton.disabled = true;
-        
+
         try {
             const response = await fetch(`${API_BASE_URL}/reports/monthly`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-                body: JSON.stringify({ year, month })
+                body: JSON.stringify({ year, month, account })
             });
             if (!response.ok) throw new Error('Falha ao gerar o relatório.');
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `relatorio-mensal-${year}-${month}.pdf`;
+            a.download = `relatorio-mensal-${year}-${month}${account ? '-' + account : ''}.pdf`;
             document.body.appendChild(a); a.click(); a.remove();
             window.URL.revokeObjectURL(url);
             closeReportModal();
         } catch (error) {
-            alert(`Erro: ${error.message}`);
+            showNotification(`Erro: ${error.message}`, 'error');
         } finally {
             if(reportGenerateText) reportGenerateText.classList.remove('hidden');
             if(reportLoadingText) reportLoadingText.classList.add('hidden');
             if(submitButton) submitButton.disabled = false;
+        }
+    }
+
+    async function populateAccountFilter() {
+        const token = getToken();
+        const select = document.getElementById('filter-account');
+        if (!select || !token) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/accounts`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Erro ao buscar contas.');
+            const accounts = await response.json();
+
+            select.innerHTML = '<option value="">Todas as Contas</option>';
+            accounts.forEach(account => {
+                if (account) {
+                    const option = document.createElement('option');
+                    option.value = account;
+                    option.textContent = account;
+                    select.appendChild(option);
+                }
+            });
+        } catch (error) {
+            showNotification('Erro ao carregar contas.', 'error');
+        }
+    }
+
+    function checkMonthlyReportReminder() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth() + 1;
+        const lastDay = new Date(year, month, 0).getDate();
+        const daysLeft = lastDay - today.getDate();
+
+        if ([3,2,1].includes(daysLeft)) {
+            const key = `toast_report_reminder_${year}_${month}_${daysLeft}`;
+            if (!sessionStorage.getItem(key)) {
+                showNotification(`Faltam ${daysLeft} dia(s) para o fim do mês. Lembre-se de gerar o relatório mensal!`, 'info');
+                sessionStorage.setItem(key, 'shown');
+            }
         }
     }
 

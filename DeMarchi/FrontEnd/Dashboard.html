@@ -6,6 +6,7 @@
     <title>Dashboard - Controlo de Gastos</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         html { scroll-behavior: smooth; }
@@ -23,6 +24,15 @@
         }
         .modal-overlay {
             transition: opacity 0.3s ease;
+        }
+
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(-10px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s;
+            transition: opacity 0.5s;
         }
     </style>
 </head>
@@ -81,10 +91,10 @@
                 <canvas id="mixed-type-chart"></canvas>
             </div>
 
-            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <!--<div class="bg-white p-6 rounded-lg shadow-md mb-8">
                 <h3 class="text-xl font-semibold text-gray-700 mb-4">Gastos por Plano de Conta (Pessoal)</h3>
                 <canvas id="plan-chart"></canvas>
-            </div>
+            </div>-->
 
             <div class="bg-white p-6 rounded-lg shadow-md mb-8">
                 <h3 class="text-xl font-semibold text-gray-700 mb-4">Adicionar Novo Gasto</h3>
@@ -99,7 +109,7 @@
                             <select id="form-account" name="account" class="mt-1 block w-full p-2 border rounded-lg" required>
                                 <option value="">Selecione uma conta</option>
                                 <option>Nu Bank Ketlyn</option>
-                                <option>Nu Vainer</option>
+                                <option>Nu Bank Vainer</option>
                                 <option>Ourocard Ketlyn</option>
                                 <option>PicPay Vainer</option>
                                 <option>Ducatto</option>
@@ -148,8 +158,13 @@
             </div>
 
             <div class="bg-white p-6 rounded-lg shadow-md">
-                 <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-semibold">Histórico de Transações</h3><div class="flex gap-2"><select id="filter-year" class="p-2 border rounded-lg"></select><select id="filter-month" class="p-2 border rounded-lg"></select></div></div>
+                 <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-semibold">Histórico de Transações</h3><div class="flex gap-2"><select id="filter-account" class="border rounded px-2 py-1"><option value="">Todas as Contas</option><option value="Nu Bank Vainer">Nu Bank Vainer</option><option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option><option value="Ourocard Ketlyn">Ourocard Ketlyn</option><option value="Ducatto">Ducatto</option><option value="Master">Master</option></select><select id="filter-year" class="border rounded px-2 py-1"></select><select id="filter-month" class="border rounded px-2 py-1"></select></div></div>
                 <div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-gray-50"><tr><th class="p-3">Data</th><th class="p-3">Descrição</th><th class="p-3">Valor</th><th class="p-3">Conta</th><th class="p-3">Tipo</th><th class="p-3">Plano de Conta</th> <!-- NOVA COLUNA --><th class="p-3">Nota</th><th class="p-3">Ações</th></tr></thead><tbody id="expenses-table-body"></tbody></table></div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Metas por Plano de Conta</h3>
+                <canvas id="goals-plan-chart"></canvas>
             </div>
         </main>
     </div>
@@ -178,7 +193,10 @@
             </form>
         </div>
     </div>
-    
+
+    <!-- Toast Notification -->
+<div id="toast-container" class="fixed top-6 right-6 z-50 flex flex-col gap-2"></div>
+
     <script src="dashboard.js"></script>
 </body>
 </html>
