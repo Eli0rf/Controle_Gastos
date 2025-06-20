@@ -403,7 +403,6 @@ app.get('/api/expenses-goals', authenticateToken, async (req, res) => {
 
 app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
     const userId = req.user.id;
-    // Por padrão, pega a semana atual (domingo a sábado)
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0 (domingo) a 6 (sábado)
     const start = new Date(now);
@@ -423,48 +422,142 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
         // Resumo
         const total = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
         const porConta = {};
+        const porTipo = { Pessoal: 0, Empresarial: 0 };
+        const porDia = {};
         expenses.forEach(e => {
             porConta[e.account] = (porConta[e.account] || 0) + parseFloat(e.amount);
+            if (e.is_business_expense) porTipo.Empresarial += parseFloat(e.amount);
+            else porTipo.Pessoal += parseFloat(e.amount);
+
+            const dia = new Date(e.transaction_date).toLocaleDateString('pt-BR');
+            porDia[dia] = (porDia[dia] || 0) + parseFloat(e.amount);
         });
+
+        // Top 5 maiores gastos
+        const topGastos = [...expenses]
+            .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+            .slice(0, 5);
 
         // Gráfico de barras por conta
         const chartCanvas = new ChartJSNodeCanvas({ width: 600, height: 300 });
-        const chartBuffer = await chartCanvas.renderToBuffer({
+        const chartBarBuffer = await chartCanvas.renderToBuffer({
             type: 'bar',
             data: {
                 labels: Object.keys(porConta),
                 datasets: [{
                     label: 'Gastos por Conta',
                     data: Object.values(porConta),
-                    backgroundColor: 'rgba(59,130,246,0.7)'
+                    backgroundColor: [
+                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'
+                    ]
                 }]
             },
             options: { plugins: { legend: { display: false } } }
         });
 
+        // Gráfico de pizza por tipo
+        const chartPieBuffer = await chartCanvas.renderToBuffer({
+            type: 'pie',
+            data: {
+                labels: Object.keys(porTipo),
+                datasets: [{
+                    data: Object.values(porTipo),
+                    backgroundColor: ['#3B82F6', '#EF4444']
+                }]
+            }
+        });
+
+        // Gráfico de linha por dia
+        const diasLabels = Object.keys(porDia);
+        const diasValores = diasLabels.map(d => porDia[d]);
+        const chartLineBuffer = await chartCanvas.renderToBuffer({
+            type: 'line',
+            data: {
+                labels: diasLabels,
+                datasets: [{
+                    label: 'Gastos por Dia',
+                    data: diasValores,
+                    borderColor: '#6366F1',
+                    backgroundColor: 'rgba(99,102,241,0.2)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            }
+        });
+
         // Gera PDF
         const doc = new pdfkit({ autoFirstPage: false });
+        doc.registerFont('NotoSans', path.join(__dirname, 'fonts', 'NotoSans-Regular.ttf'));
         doc.font('NotoSans');
+
+        // Página de capa
+        doc.addPage({ margin: 40, size: 'A4', layout: 'portrait', bufferPages: true });
+        doc.rect(0, 0, doc.page.width, 90).fill('#3B82F6');
+        doc.fillColor('white').fontSize(32).text('📅 Relatório Semanal de Gastos', 0, 30, { align: 'center', width: doc.page.width });
+        doc.moveDown(2);
+        doc.fillColor('#222').fontSize(16).text(`Período: ${start.toLocaleDateString('pt-BR')} a ${end.toLocaleDateString('pt-BR')}`, { align: 'center' });
+        doc.moveDown();
+        doc.fontSize(14).fillColor('#10B981').text(`Total gasto: R$ ${total.toFixed(2)}`, { align: 'center' });
+        doc.moveDown(2);
+        doc.fillColor('#6B7280').fontSize(12).text('Relatório gerado automaticamente pelo sistema Controle de Gastos', { align: 'center' });
+
+        // Gráfico de barras por conta
+        doc.addPage();
+        doc.rect(0, 0, doc.page.width, 40).fill('#6366F1');
+        doc.fillColor('white').fontSize(20).text('💳 Gastos por Conta', 0, 10, { align: 'center', width: doc.page.width });
+        doc.moveDown(2);
+        doc.image(chartBarBuffer, { fit: [500, 200], align: 'center' });
+        doc.moveDown();
+        Object.entries(porConta).forEach(([conta, valor]) => {
+            doc.fontSize(12).fillColor('#222').text(`- ${conta}: R$ ${valor.toFixed(2)}`);
+        });
+
+        // Gráfico de pizza por tipo
+        doc.addPage();
+        doc.rect(0, 0, doc.page.width, 40).fill('#F59E0B');
+        doc.fillColor('white').fontSize(20).text('🏷️ Distribuição por Tipo', 0, 10, { align: 'center', width: doc.page.width });
+        doc.moveDown(2);
+        doc.image(chartPieBuffer, { fit: [300, 200], align: 'center' });
+        doc.moveDown();
+        Object.entries(porTipo).forEach(([tipo, valor]) => {
+            doc.fontSize(12).fillColor(tipo === 'Empresarial' ? '#EF4444' : '#3B82F6').text(`- ${tipo}: R$ ${valor.toFixed(2)}`);
+        });
+
+        // Gráfico de linha por dia
+        doc.addPage();
+        doc.rect(0, 0, doc.page.width, 40).fill('#10B981');
+        doc.fillColor('white').fontSize(20).text('📈 Evolução Diária dos Gastos', 0, 10, { align: 'center', width: doc.page.width });
+        doc.moveDown(2);
+        doc.image(chartLineBuffer, { fit: [500, 200], align: 'center' });
+
+        // Top 5 maiores gastos
+        doc.addPage();
+        doc.rect(0, 0, doc.page.width, 40).fill('#EF4444');
+        doc.fillColor('white').fontSize(20).text('🔥 Top 5 Maiores Gastos da Semana', 0, 10, { align: 'center', width: doc.page.width });
+        doc.moveDown(2);
+        topGastos.forEach((e, idx) => {
+            doc.fontSize(13).fillColor('#222').text(
+                `${idx + 1}. ${new Date(e.transaction_date).toLocaleDateString('pt-BR')} | ${e.account} | R$ ${parseFloat(e.amount).toFixed(2)} | ${e.description}`
+            );
+        });
+
+        // Lista de todas as transações
+        doc.addPage();
+        doc.rect(0, 0, doc.page.width, 40).fill('#3B82F6');
+        doc.fillColor('white').fontSize(20).text('📋 Todas as Transações da Semana', 0, 10, { align: 'center', width: doc.page.width });
+        doc.moveDown(2);
+        expenses.forEach(e => {
+            doc.fontSize(10).fillColor('#222').text(
+                `🗓️ ${new Date(e.transaction_date).toLocaleDateString('pt-BR')} | R$ ${parseFloat(e.amount).toFixed(2)} | ${e.account} | ${e.description} | ${e.is_business_expense ? 'Empresarial 💼' : 'Pessoal 🏠'}`
+            );
+        });
+
+        // Rodapé
+        doc.fontSize(10).fillColor('#6B7280').text('Obrigado por usar o Controle de Gastos! 🚀', 0, doc.page.height - 40, { align: 'center', width: doc.page.width });
+
+        doc.end();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename=relatorio-semanal.pdf');
-        doc.fontSize(18).text('Relatório Semanal de Gastos', { align: 'center' });
-        doc.moveDown();
-        doc.fontSize(12).text(`Período: ${start.toLocaleDateString()} a ${end.toLocaleDateString()}`);
-        doc.text(`Total gasto: R$ ${total.toFixed(2)}`);
-        doc.moveDown();
-        doc.text('Resumo por Conta:');
-        Object.entries(porConta).forEach(([conta, valor]) => {
-            doc.text(`- ${conta}: R$ ${valor.toFixed(2)}`);
-        });
-        doc.moveDown();
-        doc.text('Gráfico de Gastos por Conta:');
-        doc.image(chartBuffer, { fit: [500, 250], align: 'center' });
-        doc.moveDown();
-        doc.text('Transações da Semana:', { underline: true });
-        expenses.forEach(e => {
-            doc.text(`${new Date(e.transaction_date).toLocaleDateString()} | ${e.account} | R$ ${parseFloat(e.amount).toFixed(2)} | ${e.description}`);
-        });
-        doc.end();
         doc.pipe(res);
     } catch (error) {
         console.error('Erro ao gerar relatório semanal:', error);
