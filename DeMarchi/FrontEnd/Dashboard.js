@@ -32,6 +32,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const reportGenerateText = document.getElementById('report-generate-text');
     const reportLoadingText = document.getElementById('report-loading-text');
 
+    // ========== RELATÓRIO INTERATIVO ==========
+    const interactiveReportBtn = document.getElementById('interactive-report-btn');
+    const interactiveReportModal = document.getElementById('interactive-report-modal');
+    const closeIrModalBtn = document.getElementById('close-ir-modal');
+    const irForm = document.getElementById('interactive-report-form');
+    const irAccount = document.getElementById('ir-account');
+    const irCharts = document.getElementById('ir-charts');
+    const irDetails = document.getElementById('ir-details');
+
     let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
     let allExpensesCache = [];
 
@@ -52,6 +61,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (reportForm) reportForm.addEventListener('submit', handleMonthlyReportDownload);
         if (businessCheckbox) businessCheckbox.addEventListener('change', toggleExpenseFields);
         document.getElementById('filter-account').addEventListener('change', fetchAllData);
+        if (interactiveReportBtn) interactiveReportBtn.addEventListener('click', () => {
+            if (interactiveReportModal) {
+                interactiveReportModal.classList.remove('hidden');
+                setTimeout(() => interactiveReportModal.classList.remove('opacity-0'), 10);
+                populateIrAccounts();
+            }
+        });
+        if (closeIrModalBtn) closeIrModalBtn.addEventListener('click', () => {
+            if (interactiveReportModal) {
+                interactiveReportModal.classList.add('opacity-0');
+                setTimeout(() => interactiveReportModal.classList.add('hidden'), 300);
+            }
+        });
     }
 
     async function handleLogin(e) {
@@ -875,4 +897,201 @@ document.addEventListener('DOMContentLoaded', function() {
 
     addEventListeners();
     if (getToken()) showDashboard(); else showLogin();
+
+    // ========== RELATÓRIO INTERATIVO ==========
+    async function populateIrAccounts() {
+        const token = getToken();
+        if (!irAccount || !token) return;
+        try {
+            const response = await fetch(`${API_BASE_URL}/accounts`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Erro ao buscar contas.');
+            const accounts = await response.json();
+            irAccount.innerHTML = '<option value="">Todas</option>';
+            accounts.forEach(account => {
+                if (account) {
+                    const option = document.createElement('option');
+                    option.value = account;
+                    option.textContent = account;
+                    irAccount.appendChild(option);
+                }
+            });
+        } catch (error) {
+            showNotification('Erro ao carregar contas.', 'error');
+        }
+    }
+
+    if (irForm) irForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        irCharts.innerHTML = '';
+        irDetails.innerHTML = '';
+        const period1 = document.getElementById('ir-period-1').value;
+        const period2 = document.getElementById('ir-period-2').value;
+        const account = irAccount.value;
+        const type = document.getElementById('ir-type').value;
+        const category = document.getElementById('ir-category').value.trim();
+        if (!period1) return showNotification('Selecione ao menos o Período 1.', 'error');
+        const [year1, month1] = period1.split('-');
+        let year2, month2;
+        if (period2) [year2, month2] = period2.split('-');
+        // Busca dados dos dois períodos
+        const data1 = await fetchIrData(year1, month1, account, type, category);
+        let data2 = null;
+        if (year2 && month2) data2 = await fetchIrData(year2, month2, account, type, category);
+        renderIrCharts(data1, data2, period1, period2);
+    });
+
+    async function fetchIrData(year, month, account, type, category) {
+        const token = getToken();
+        year = parseInt(year, 10);
+        month = parseInt(month, 10);
+        const params = new URLSearchParams({ year, month });
+        if (account) params.append('account', account);
+        try {
+            const response = await fetch(`${API_BASE_URL}/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Erro ao buscar despesas:', errorText);
+                throw new Error('Erro ao buscar despesas.');
+            }
+            let expenses = await response.json();
+            if (!Array.isArray(expenses)) {
+                console.error('Resposta inesperada da API:', expenses);
+                expenses = [];
+            }
+            // Filtro por tipo
+            if (type) expenses = expenses.filter(e => (type === 'empresa' ? e.is_business_expense : !e.is_business_expense));
+            // Filtro por categoria
+            if (category) expenses = expenses.filter(e => String(e.account_plan_code || '').toLowerCase().includes(category.toLowerCase()));
+            if (expenses.length === 0) {
+                console.warn('Nenhum dado encontrado para os filtros:', {year, month, account, type, category});
+            }
+            return expenses;
+        } catch (error) {
+            showNotification('Erro ao buscar dados do relatório: ' + error.message, 'error');
+            return [];
+        }
+    }
+
+    function renderIrCharts(data1, data2, period1, period2) {
+        irCharts.innerHTML = '';
+        irDetails.innerHTML = '';
+        // Gráfico 1
+        const canvas1 = document.createElement('canvas');
+        canvas1.height = 300;
+        irCharts.appendChild(canvas1);
+        renderIrBarChart(canvas1, data1, period1, 1);
+        // Gráfico 2 (comparação)
+        if (data2) {
+            const canvas2 = document.createElement('canvas');
+            canvas2.height = 300;
+            irCharts.appendChild(canvas2);
+            renderIrBarChart(canvas2, data2, period2, 2);
+        }
+    }
+
+    function renderIrBarChart(canvas, data, period, chartNum) {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        if (!data || !data.length) {
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#888';
+            ctx.textAlign = 'center';
+            ctx.fillText('Sem dados para este período.', canvas.width / 2, canvas.height / 2);
+            return;
+        }
+        // Agrupa por categoria/plano de conta
+        const grouped = {};
+        data.forEach(e => {
+            const key = e.account_plan_code || 'Sem Plano';
+            if (!grouped[key]) grouped[key] = 0;
+            grouped[key] += parseFloat(e.amount);
+        });
+        const labels = Object.keys(grouped);
+        const values = Object.values(grouped);
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: `Total por Plano (${period})`,
+                    data: values,
+                    backgroundColor: '#6366F1'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: `Gastos por Plano de Conta (${period})`,
+                        font: { size: 16 }
+                    },
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `R$ ${ctx.parsed.y.toFixed(2)}`
+                        }
+                    },
+                    datalabels: {
+                        color: '#222',
+                        anchor: 'end', align: 'top', font: { weight: 'bold' },
+                        formatter: v => typeof v === 'number' ? `R$ ${v.toFixed(2)}` : ''
+                    }
+                },
+                onClick: (evt, elements) => {
+                    if (elements && elements.length > 0) {
+                        const idx = elements[0].index;
+                        const plano = labels[idx];
+                        showIrDetails(data, plano, chartNum, period);
+                    }
+                },
+                scales: { y: { beginAtZero: true } }
+            },
+            plugins: [ChartDataLabels]
+        });
+    }
+
+    function showIrDetails(data, plano, chartNum, period) {
+        const filtered = data.filter(e => String(e.account_plan_code || 'Sem Plano') === String(plano));
+        let total = filtered.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        let html = `<div class="mb-2 font-bold text-lg flex items-center justify-between">
+            <span>Detalhes do Plano <span class='text-blue-600'>${plano}</span> (${period})</span>
+            <span class='bg-blue-100 text-blue-800 px-3 py-1 rounded font-mono'>Total: R$ ${total.toFixed(2)}</span>
+            <button id="ir-export-csv" class="bg-green-500 text-white px-3 py-1 rounded ml-4"><i class="fa fa-file-csv"></i> Exportar CSV</button>
+        </div>`;
+        if (filtered.length === 0) {
+            html += `<div class='text-gray-500 italic'>Nenhuma transação encontrada para este plano neste período.</div>`;
+            irDetails.innerHTML = html;
+            return;
+        }
+        html += `<div style="max-height:320px;overflow:auto;"><table class="table table-sm table-bordered align-middle"><thead class='sticky-top bg-white'><tr><th>Data</th><th>Descrição</th><th class='text-end'>Valor</th><th>Conta</th><th>Tipo</th></tr></thead><tbody>`;
+        filtered.forEach(e => {
+            html += `<tr><td>${new Date(e.transaction_date).toLocaleDateString('pt-BR')}</td><td>${e.description}</td><td class='text-end'>R$ ${parseFloat(e.amount).toFixed(2)}</td><td>${e.account}</td><td>${e.is_business_expense ? 'Empresarial' : 'Pessoal'}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        irDetails.innerHTML = html;
+        // Exportar CSV
+        const exportBtn = document.getElementById('ir-export-csv');
+        if (exportBtn) {
+            exportBtn.onclick = () => {
+                let csv = 'Data,Descrição,Valor,Conta,Tipo\n';
+                filtered.forEach(e => {
+                    csv += `"${new Date(e.transaction_date).toLocaleDateString('pt-BR')}","${e.description}","${parseFloat(e.amount).toFixed(2)}","${e.account}","${e.is_business_expense ? 'Empresarial' : 'Pessoal'}"\n`;
+                });
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `relatorio_${plano}_${period}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+        }
+        irDetails.scrollIntoView({ behavior: 'smooth' });
+    }
 });
