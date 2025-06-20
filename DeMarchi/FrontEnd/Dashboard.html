@@ -4,10 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Controlo de Gastos</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- AOS Animate On Scroll CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Tippy.js -->
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
     <style>
         html { scroll-behavior: smooth; }
         .field-container {
@@ -25,7 +37,6 @@
         .modal-overlay {
             transition: opacity 0.3s ease;
         }
-
         @keyframes fade-in {
             from { opacity: 0; transform: translateY(-10px);}
             to { opacity: 1; transform: translateY(0);}
@@ -34,6 +45,30 @@
             animation: fade-in 0.3s;
             transition: opacity 0.5s;
         }
+        /* Dark mode support */
+        body.dark-mode {
+            background: #181a1b !important;
+            color: #f1f1f1 !important;
+        }
+        body.dark-mode .bg-white { background: #23272b !important; color: #f1f1f1 !important; }
+        body.dark-mode .shadow-lg, body.dark-mode .shadow-md, body.dark-mode .shadow-xl { box-shadow: 0 0 16px #0004 !important; }
+        body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
+            background: #23272b !important; color: #f1f1f1 !important; border-color: #444 !important;
+        }
+        body.dark-mode .modal-overlay { background: #000a !important; }
+        body.dark-mode .bg-gradient-to-br { filter: brightness(0.85); }
+        body.dark-mode .table { color: #f1f1f1; }
+        body.dark-mode .bg-gray-50 { background: #23272b !important; }
+        body.dark-mode .text-gray-700, body.dark-mode .text-gray-800, body.dark-mode .text-gray-600 { color: #f1f1f1 !important; }
+        body.dark-mode .border { border-color: #444 !important; }
+        body.dark-mode .bg-blue-600 { background: #2563eb !important; }
+        body.dark-mode .bg-teal-500 { background: #14b8a6 !important; }
+        body.dark-mode .bg-red-500 { background: #dc2626 !important; }
+        body.dark-mode .bg-green-500 { background: #22c55e !important; }
+        body.dark-mode .bg-purple-500 { background: #a21caf !important; }
+        body.dark-mode .bg-gradient-to-br { background: linear-gradient(135deg, #23272b 60%, #181a1b 100%) !important; }
+        .theme-toggle-btn { cursor: pointer; transition: color 0.2s; }
+        .theme-toggle-btn:hover { color: #f59e42; }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -62,42 +97,76 @@
     <!-- =========== Conteúdo Principal do Dashboard =========== -->
     <div id="dashboard-content" class="hidden">
         <header class="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-10">
-            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Dashboard</h1>
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800 d-flex align-items-center gap-2">
+                <i class="bi bi-bar-chart-fill text-primary"></i> Dashboard
+            </h1>
             <div class="flex items-center gap-2 md:gap-4">
-                 <span id="welcome-user" class="text-gray-600 hidden md:block"></span>
-                 <button id="monthly-report-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg"><i class="fas fa-chart-pie mr-2"></i>Mensal</button>
-                 <button id="weekly-report-btn" class="bg-teal-500 text-white px-4 py-2 rounded-lg"><i class="fas fa-file-pdf mr-2"></i>Semanal</button>
-                 <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-lg">Sair</button>
+                <button id="theme-toggle" class="theme-toggle-btn text-2xl me-2" title="Alternar modo claro/escuro">
+                    <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
+                </button>
+                <span id="welcome-user" class="text-gray-600 hidden md:block"></span>
+                <button id="monthly-report-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2">
+                    <i class="fas fa-chart-pie me-2"></i>📅 Mensal
+                </button>
+                <button id="weekly-report-btn" class="bg-teal-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2">
+                    <i class="fas fa-file-pdf me-2"></i>🗓️ Semanal
+                </button>
+                <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2">
+                    <i class="bi bi-box-arrow-right"></i> Sair
+                </button>
             </div>
         </header>
 
         <main class="p-4 md:p-8">
+            <!-- Cards com Destaques -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="font-semibold text-gray-600">Gasto Total (Mês)</h3><p id="total-spent" class="text-3xl font-bold text-blue-600">R$ 0,00</p></div>
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h3 class="font-semibold text-gray-600">Projeção Próximo Mês</h3>
-                    <p id="next-month-projection" class="text-3xl font-bold text-green-600">R$ 0,00</p>
+                <div class="bg-gradient-to-br from-blue-500 to-blue-300 p-6 rounded-2xl shadow-lg transform transition duration-500 hover:scale-105 animate-fade-in" data-aos="fade-up" data-aos-delay="100">
+                    <div class="flex items-center gap-4">
+                        <span class="text-5xl">💸</span>
+                        <div>
+                            <h3 class="font-semibold text-white text-lg">Gasto Total (Mês)</h3>
+                            <p id="total-spent" class="text-3xl font-extrabold text-white mt-2">R$ 0,00</p>
+                        </div>
+                    </div>
                 </div>
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="font-semibold text-gray-600">Nº de Transações</h3><p id="total-transactions" class="text-3xl font-bold text-purple-600">0</p></div>
+                <div class="bg-gradient-to-br from-green-500 to-green-300 p-6 rounded-2xl shadow-lg transform transition duration-500 hover:scale-105 animate-fade-in" data-aos="fade-up" data-aos-delay="200">
+                    <div class="flex items-center gap-4">
+                        <span class="text-5xl">📈</span>
+                        <div>
+                            <h3 class="font-semibold text-white text-lg">Projeção Próximo Mês</h3>
+                            <p id="next-month-projection" class="text-3xl font-extrabold text-white mt-2">R$ 0,00</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500 to-purple-300 p-6 rounded-2xl shadow-lg transform transition duration-500 hover:scale-105 animate-fade-in" data-aos="fade-up" data-aos-delay="300">
+                    <div class="flex items-center gap-4">
+                        <span class="text-5xl">🔢</span>
+                        <div>
+                            <h3 class="font-semibold text-white text-lg">Nº de Transações</h3>
+                            <p id="total-transactions" class="text-3xl font-extrabold text-white mt-2">0</p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700 mb-4">Evolução dos Gastos</h3><canvas id="expenses-line-chart"></canvas></div>
-                <div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700 mb-4">Distribuição por Conta</h3><canvas id="expenses-pie-chart"></canvas></div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">📉 Evolução dos Gastos</h3>
+                    <canvas id="expenses-line-chart"></canvas>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">🏦 Distribuição por Conta</h3>
+                    <canvas id="expenses-pie-chart"></canvas>
+                </div>
             </div>
 
             <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Comparação: Pessoal vs. Empresarial por Conta</h3>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">🏠 vs. 💼 Comparação: Pessoal vs. Empresarial por Conta</h3>
                 <canvas id="mixed-type-chart"></canvas>
             </div>
 
-            <!--<div class="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Gastos por Plano de Conta (Pessoal)</h3>
-                <canvas id="plan-chart"></canvas>
-            </div>-->
-
             <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Adicionar Novo Gasto</h3>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">➕ Adicionar Novo Gasto</h3>
                 <form id="add-expense-form" class="space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -157,13 +226,56 @@
                 </form>
             </div>
 
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">📊 Gastos por Plano de Conta</h3>
+                <canvas id="plan-chart"></canvas>
+            </div>
+
             <div class="bg-white p-6 rounded-lg shadow-md">
-                 <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-semibold">Histórico de Transações</h3><div class="flex gap-2"><select id="filter-account" class="border rounded px-2 py-1"><option value="">Todas as Contas</option><option value="Nu Bank Vainer">Nu Bank Vainer</option><option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option><option value="Ourocard Ketlyn">Ourocard Ketlyn</option><option value="Ducatto">Ducatto</option><option value="Master">Master</option></select><select id="filter-year" class="border rounded px-2 py-1"></select><select id="filter-month" class="border rounded px-2 py-1"></select></div></div>
-                <div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-gray-50"><tr><th class="p-3">Data</th><th class="p-3">Descrição</th><th class="p-3">Valor</th><th class="p-3">Conta</th><th class="p-3">Tipo</th><th class="p-3">Plano de Conta</th> <!-- NOVA COLUNA --><th class="p-3">Nota</th><th class="p-3">Ações</th></tr></thead><tbody id="expenses-table-body"></tbody></table></div>
+                 <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-semibold">🧾 Histórico de Transações</h3>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <input id="filter-search" type="text" placeholder="Buscar..." class="form-control form-control-sm w-44 me-2" title="Buscar por qualquer campo">
+                        <select id="filter-type" class="border rounded px-2 py-1" title="Filtrar por tipo">
+                            <option value="">Todos os Tipos</option>
+                            <option value="pessoal">Pessoal</option>
+                            <option value="empresa">Empresarial</option>
+                        </select>
+                        <input id="filter-min" type="number" step="0.01" placeholder="Valor mín." class="form-control form-control-sm w-24" title="Valor mínimo">
+                        <input id="filter-max" type="number" step="0.01" placeholder="Valor máx." class="form-control form-control-sm w-24" title="Valor máximo">
+                        <select id="filter-account" class="border rounded px-2 py-1" title="Filtrar por conta">
+                            <option value="">Todas as Contas</option>
+                            <option value="Nu Bank Vainer">Nu Bank Vainer</option>
+                            <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
+                            <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
+                            <option value="Ducatto">Ducatto</option>
+                            <option value="Master">Master</option>
+                        </select>
+                        <select id="filter-year" class="border rounded px-2 py-1" title="Filtrar por ano"></select>
+                        <select id="filter-month" class="border rounded px-2 py-1" title="Filtrar por mês"></select>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="p-3">Data</th>
+                                <th class="p-3">Descrição</th>
+                                <th class="p-3">Valor</th>
+                                <th class="p-3">Conta</th>
+                                <th class="p-3">Tipo</th>
+                                <th class="p-3">Plano de Conta</th>
+                                <th class="p-3">Nota</th>
+                                <th class="p-3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenses-table-body"></tbody>
+                    </table>
+                </div>
             </div>
 
             <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Metas por Plano de Conta</h3>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">🎯 Metas por Plano de Conta</h3>
                 <canvas id="goals-plan-chart"></canvas>
             </div>
         </main>
@@ -197,6 +309,13 @@
     <!-- Toast Notification -->
 <div id="toast-container" class="fixed top-6 right-6 z-50 flex flex-col gap-2"></div>
 
+    <!-- AOS Animate On Scroll JS -->
+    <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
+    <script>
+      AOS.init();
+    </script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="dashboard.js"></script>
 </body>
 </html>

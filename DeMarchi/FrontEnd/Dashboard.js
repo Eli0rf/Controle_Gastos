@@ -17,6 +17,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const expensesTableBody = document.getElementById('expenses-table-body');
     const filterYear = document.getElementById('filter-year');
     const filterMonth = document.getElementById('filter-month');
+    const filterSearchInput = document.getElementById('filter-search');
+    const filterType = document.getElementById('filter-type');
+    const filterMin = document.getElementById('filter-min');
+    const filterMax = document.getElementById('filter-max');
     const totalSpentEl = document.getElementById('total-spent');
     const totalTransactionsEl = document.getElementById('total-transactions');
     const projectionEl = document.getElementById('next-month-projection');
@@ -29,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const reportLoadingText = document.getElementById('report-loading-text');
 
     let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
+    let allExpensesCache = [];
 
     function getToken() {
         return localStorage.getItem('token');
@@ -257,23 +262,66 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // ====== DARK MODE (MODO ESCURO) ======
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    const themeIcon = document.getElementById('theme-icon');
+
+    function setTheme(mode) {
+        if (mode === 'dark') {
+            document.body.classList.add('dark-mode');
+            if (themeIcon) themeIcon.className = 'bi bi-brightness-high-fill';
+        } else {
+            document.body.classList.remove('dark-mode');
+            if (themeIcon) themeIcon.className = 'bi bi-moon-stars-fill';
+        }
+        localStorage.setItem('theme', mode);
+    }
+
+    function toggleTheme() {
+        const isDark = document.body.classList.contains('dark-mode');
+        setTheme(isDark ? 'light' : 'dark');
+    }
+
+    if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
+
+    // Aplica o tema salvo ao carregar
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') setTheme('dark');
+    else setTheme('light');
+
+    // ====== TIPPY TOOLTIP ======
+    if (window.tippy) {
+        tippy('#theme-toggle', { content: 'Alternar modo claro/escuro', placement: 'bottom' });
+        tippy('#monthly-report-btn', { content: 'Gerar relatório mensal em PDF', placement: 'bottom' });
+        tippy('#weekly-report-btn', { content: 'Baixar relatório semanal em PDF', placement: 'bottom' });
+        tippy('#logout-button', { content: 'Sair do sistema', placement: 'bottom' });
+    }
+
+    // ====== SWEETALERT2 PARA NOTIFICAÇÕES ======
     function showNotification(message, type = 'info') {
-        const toastContainer = document.getElementById('toast-container');
-        if (!toastContainer) return;
-
-        const toast = document.createElement('div');
-        toast.className = `
-            px-4 py-3 rounded shadow-lg text-white mb-2 animate-fade-in
-            ${type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-green-600' : 'bg-blue-600'}
-        `;
-        toast.textContent = message;
-
-        toastContainer.appendChild(toast);
-
-        setTimeout(() => {
-            toast.classList.add('opacity-0');
-            setTimeout(() => toast.remove(), 500);
-        }, 3500);
+        if (window.Swal) {
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: type === 'error' ? 'error' : type === 'success' ? 'success' : 'info',
+                title: message,
+                showConfirmButton: false,
+                timer: 3500,
+                timerProgressBar: true
+            });
+        } else {
+            // fallback para toast antigo
+            const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) return;
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-3 rounded shadow-lg text-white mb-2 animate-fade-in ${type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-green-600' : 'bg-blue-600'}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 500);
+            }, 3500);
+        }
     }
 
     async function fetchAndRenderExpenses() {
@@ -289,9 +337,50 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(`${API_BASE_URL}/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
             if (response.status === 401) return showLogin();
             const expenses = await response.json();
+            allExpensesCache = expenses;
             renderExpensesTable(expenses);
         } catch (error) { console.error('Erro ao buscar despesas:', error); }
     }
+
+    // FILTRO DE BUSCA NO HISTÓRICO (todas as colunas + tipo + valor min/max)
+    function applyAllFilters() {
+        let filtered = allExpensesCache;
+        const search = filterSearchInput?.value.trim().toLowerCase() || '';
+        const type = filterType?.value || '';
+        const min = filterMin?.value ? parseFloat(filterMin.value) : null;
+        const max = filterMax?.value ? parseFloat(filterMax.value) : null;
+        filtered = filtered.filter(e => {
+            // Busca texto em todas as colunas
+            const data = e.transaction_date ? new Date(e.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'}).toLowerCase() : '';
+            const descricao = e.description ? e.description.toLowerCase() : '';
+            const valor = e.amount ? String(e.amount).toLowerCase() : '';
+            const conta = e.account ? e.account.toLowerCase() : '';
+            const tipo = e.is_business_expense ? 'empresa' : 'pessoal';
+            const plano = e.account_plan_code ? String(e.account_plan_code).toLowerCase() : '';
+            const nota = e.invoice_path ? 'sim' : 'não';
+            let match = true;
+            if (search) {
+                match = (
+                    data.includes(search) ||
+                    descricao.includes(search) ||
+                    valor.includes(search) ||
+                    conta.includes(search) ||
+                    tipo.includes(search) ||
+                    plano.includes(search) ||
+                    nota.includes(search)
+                );
+            }
+            if (type && tipo !== type) match = false;
+            if (min !== null && parseFloat(e.amount) < min) match = false;
+            if (max !== null && parseFloat(e.amount) > max) match = false;
+            return match;
+        });
+        renderExpensesTable(filtered);
+    }
+    if (filterSearchInput) filterSearchInput.addEventListener('input', applyAllFilters);
+    if (filterType) filterType.addEventListener('change', applyAllFilters);
+    if (filterMin) filterMin.addEventListener('input', applyAllFilters);
+    if (filterMax) filterMax.addEventListener('input', applyAllFilters);
 
     async function fetchAndRenderDashboardMetrics() {
         const token = getToken();
@@ -352,22 +441,51 @@ document.addEventListener('DOMContentLoaded', function() {
         if (totalTransactionsEl) totalTransactionsEl.textContent = expenses.length;
     }
 
+    // Função utilitária para obter cor do tema
+    function getThemeColor(light, dark) {
+        return document.body.classList.contains('dark-mode') ? dark : light;
+    }
+
+    // Função para exibir mensagem amigável quando não há dados
+    function showNoDataMessage(canvasId, message) {
+        const canvas = document.getElementById(canvasId);
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '16px Arial';
+            ctx.fillStyle = getThemeColor('#222', '#fff');
+            ctx.textAlign = 'center';
+            ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+        }
+    }
+
+    function getNumberValue(v) {
+        if (typeof v === 'number') return v;
+        if (v && typeof v === 'object') {
+            if ('y' in v && typeof v.y === 'number') return v.y;
+            if ('x' in v && typeof v.x === 'number') return v.x;
+        }
+        return 0;
+    }
+
     function renderLineChart(data = []) {
-        const ctx = document.getElementById('expenses-line-chart')?.getContext('2d');
+        const canvas = document.getElementById('expenses-line-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
         if (!ctx) return;
         if (expensesLineChart) expensesLineChart.destroy();
-
         const year = parseInt(filterYear.value, 10);
         const month = parseInt(filterMonth.value, 10);
         const daysInMonth = new Date(year, month, 0).getDate();
-
         const labels = Array.from({ length: daysInMonth }, (_, i) => i + 1);
         const chartData = new Array(daysInMonth).fill(0);
-
-        data.forEach(d => {
-            chartData[d.day - 1] = d.total;
-        });
-
+        data.forEach(d => { chartData[d.day - 1] = d.total; });
+        if (chartData.every(v => v === 0)) {
+            showNoDataMessage('expenses-line-chart', 'Sem dados para este período.');
+            return;
+        }
+        const max = Math.max(...chartData);
+        const min = Math.min(...chartData.filter(v => v > 0));
         expensesLineChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -375,41 +493,121 @@ document.addEventListener('DOMContentLoaded', function() {
                 datasets: [{
                     label: `Gastos Diários em ${filterMonth.options[filterMonth.selectedIndex].text}`,
                     data: chartData,
-                    borderColor: '#3B82F6',
-                    tension: 0.1
+                    borderColor: getThemeColor('#3B82F6', '#60A5FA'),
+                    backgroundColor: getThemeColor('rgba(59,130,246,0.1)', 'rgba(59,130,246,0.3)'),
+                    tension: 0.2,
+                    pointBackgroundColor: chartData.map(v => v === max ? '#22c55e' : v === min ? '#ef4444' : getThemeColor('#3B82F6', '#60A5FA')),
+                    pointRadius: chartData.map(v => v === max || v === min ? 6 : 4)
                 }]
             },
             options: {
-                scales: {
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Dia do Mês'
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Evolução dos Gastos Diários',
+                        color: getThemeColor('#222', '#fff'),
+                        font: { size: 18 }
+                    },
+                    subtitle: {
+                        display: true,
+                        text: `Maior gasto: R$ ${max.toFixed(2)} | Menor gasto: R$ ${min ? min.toFixed(2) : '0.00'}`,
+                        color: getThemeColor('#666', '#ccc'),
+                        font: { size: 13 }
+                    },
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `Dia ${ctx.label}: R$ ${ctx.parsed.y.toFixed(2)}`
+                        }
+                    },
+                    datalabels: {
+                        color: getThemeColor('#222', '#fff'),
+                        anchor: 'end', align: 'top', font: { weight: 'bold' },
+                        formatter: v => {
+                            const val = getNumberValue(v);
+                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
                         }
                     }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Dia do Mês' } },
+                    y: { beginAtZero: true }
                 }
-            }
+            },
+            plugins: [ChartDataLabels]
         });
     }
 
     function renderPieChart(data = []) {
-        const ctx = document.getElementById('expenses-pie-chart')?.getContext('2d');
+        const canvas = document.getElementById('expenses-pie-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
         if (!ctx) return;
         if (expensesPieChart) expensesPieChart.destroy();
-        expensesPieChart = new Chart(ctx, { type: 'pie', data: { labels: data.map(d => d.account), datasets: [{ data: data.map(d => d.total), backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'] }] } });
-    }
-
-    function renderPlanChart(data = []) {
-        const ctx = document.getElementById('plan-chart')?.getContext('2d');
-        if (!ctx) return;
-        if (planChart) planChart.destroy();
-        planChart = new Chart(ctx, { type: 'bar', data: { labels: data.map(d => `Plano ${d.account_plan_code}`), datasets: [{ label: 'Total Gasto (R$)', data: data.map(d => d.total), backgroundColor: 'rgba(239, 68, 68, 0.7)' }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } } } });
+        if (!data.length) {
+            showNoDataMessage('expenses-pie-chart', 'Sem dados para este período.');
+            return;
+        }
+        const total = Array.isArray(data) && data.length > 0 ? data.reduce((sum, d) => sum + (typeof d.total === 'number' ? d.total : parseFloat(d.total) || 0), 0) : 0;
+        expensesPieChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: data.map(d => d.account),
+                datasets: [{
+                    data: data.map(d => d.total),
+                    backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Distribuição por Conta',
+                        color: getThemeColor('#222', '#fff'),
+                        font: { size: 18 }
+                    },
+                    subtitle: {
+                        display: true,
+                        text: `Total: R$ ${total.toFixed(2)}`,
+                        color: getThemeColor('#666', '#ccc'),
+                        font: { size: 13 }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: getThemeColor('#222', '#fff') }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.label}: R$ ${ctx.parsed.toFixed(2)} (${((ctx.parsed/total)*100).toFixed(1)}%)`
+                        }
+                    },
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold' },
+                        formatter: v => {
+                            const val = getNumberValue(v);
+                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
+                        }
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
     }
 
     function renderMixedTypeChart(data = []) {
-        const ctx = document.getElementById('mixed-type-chart')?.getContext('2d');
+        const canvas = document.getElementById('mixed-type-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
         if (!ctx) return;
         if (mixedTypeChart) mixedTypeChart.destroy();
+        if (!data.length) {
+            showNoDataMessage('mixed-type-chart', 'Sem dados para este período.');
+            return;
+        }
+        const max = Math.max(...data.map(d => d.personal_total + d.business_total));
         mixedTypeChart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -419,7 +617,99 @@ document.addEventListener('DOMContentLoaded', function() {
                     { label: 'Gastos Empresariais', data: data.map(d => d.business_total), backgroundColor: 'rgba(239, 68, 68, 0.7)' }
                 ]
             },
-            options: { scales: { x: { stacked: false }, y: { beginAtZero: true } }, plugins: { tooltip: { mode: 'index', intersect: false } } }
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Comparação: Pessoal vs. Empresarial por Conta',
+                        color: getThemeColor('#222', '#fff'),
+                        font: { size: 18 }
+                    },
+                    subtitle: {
+                        display: true,
+                        text: `Conta com maior gasto: ${data.find(d => d.personal_total + d.business_total === max)?.account || '-'}`,
+                        color: getThemeColor('#666', '#ccc'),
+                        font: { size: 13 }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: getThemeColor('#222', '#fff') }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.dataset.label}: R$ ${ctx.parsed.y.toFixed(2)}`
+                        }
+                    },
+                    datalabels: {
+                        color: getThemeColor('#222', '#fff'),
+                        anchor: 'end', align: 'top', font: { weight: 'bold' },
+                        formatter: v => {
+                            const val = getNumberValue(v);
+                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
+                        }
+                    }
+                },
+                scales: { x: { stacked: false }, y: { beginAtZero: true } }
+            },
+            plugins: [ChartDataLabels]
+        });
+    }
+
+    function renderPlanChart(data = []) {
+        const canvas = document.getElementById('plan-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        if (planChart) planChart.destroy();
+        if (!data.length) {
+            showNoDataMessage('plan-chart', 'Sem dados para este período.');
+            return;
+        }
+        const max = Math.max(...data.map(d => d.total));
+        planChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(d => `Plano ${d.account_plan_code}`),
+                datasets: [{
+                    label: 'Total Gasto (R$)',
+                    data: data.map(d => d.total),
+                    backgroundColor: data.map(d => d.total === max ? '#22c55e' : 'rgba(239, 68, 68, 0.7)')
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Gastos por Plano de Conta',
+                        color: getThemeColor('#222', '#fff'),
+                        font: { size: 18 }
+                    },
+                    subtitle: {
+                        display: true,
+                        text: `Plano com maior gasto: ${data.find(d => d.total === max)?.account_plan_code || '-'}`,
+                        color: getThemeColor('#666', '#ccc'),
+                        font: { size: 13 }
+                    },
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `R$ ${ctx.parsed.x.toFixed(2)}`
+                        }
+                    },
+                    datalabels: {
+                        color: getThemeColor('#222', '#fff'),
+                        anchor: 'end', align: 'right', font: { weight: 'bold' },
+                        formatter: v => {
+                            const val = getNumberValue(v);
+                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
+                        }
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
         });
     }
 
@@ -576,6 +866,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 sessionStorage.setItem(key, 'shown');
             }
         }
+    }
+
+    // Garantir que o plugin ChartDataLabels está registrado globalmente
+    if (window.Chart && window.ChartDataLabels) {
+        Chart.register(window.ChartDataLabels);
     }
 
     addEventListeners();
