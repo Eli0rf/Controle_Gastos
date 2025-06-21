@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const passwordInput = document.getElementById('password');
         if (!usernameInput || !passwordInput) return alert("Erro de configuração do HTML.");
         try {
-            const response = await fetch(`${API_BASE_URL}/login`, {
+            const response = await fetch(`${API_BASE_URL}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: usernameInput.value, password: passwordInput.value })
@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         try {
-            const response = await fetch(`${API_BASE_URL}/expenses-goals?${params.toString()}`, {
+            const response = await fetch(`${API_BASE_URL}/api/expenses-goals?${params.toString()}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Erro ao buscar metas.');
@@ -359,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function() {
             account: selectedAccount
         });
         try {
-            const response = await fetch(`${API_BASE_URL}/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await fetch(`${API_BASE_URL}/api/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
             if (response.status === 401) return showLogin();
             const expenses = await response.json();
             allExpensesCache = expenses;
@@ -413,7 +413,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const params = new URLSearchParams({ year: filterYear.value, month: filterMonth.value });
         try {
-            const response = await fetch(`${API_BASE_URL}/dashboard?${params}`, {
+            const response = await fetch(`${API_BASE_URL}/api/dashboard?${params}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Erro ao buscar métricas do dashboard.');
@@ -743,7 +743,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData(addExpenseForm);
         formData.set('is_business_expense', businessCheckbox.checked);
         try {
-            const response = await fetch(`${API_BASE_URL}/expenses`, { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }, body: formData });
+            const response = await fetch(`${API_BASE_URL}/api/expenses`, { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }, body: formData });
             if (!response.ok) { const err = await response.json(); throw new Error(err.message); }
             addExpenseForm.reset();
             toggleExpenseFields();
@@ -758,7 +758,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function deleteExpense(id) {
         try {
-            const response = await fetch(`${API_BASE_URL}/expenses/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
+            const response = await fetch(`${API_BASE_URL}/api/expenses/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
             if (!response.ok) throw new Error('Falha ao apagar despesa.');
             fetchAllData();
         } catch (error) { alert(`Erro: ${error.message}`); }
@@ -768,7 +768,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const token = getToken();
         if (!token) return showLogin();
         try {
-            const response = await fetch(`${API_BASE_URL}/reports/weekly`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/weekly`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Erro ao gerar relatório semanal.');
@@ -851,7 +851,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if(submitButton) submitButton.disabled = true;
     
         try {
-            const response = await fetch(`${API_BASE_URL}/reports/monthly`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/monthly`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
                 body: JSON.stringify({ year, month, account })
@@ -880,7 +880,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!select || !token) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/accounts`, {
+            const response = await fetch(`${API_BASE_URL}/api/accounts`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Erro ao buscar contas.');
@@ -929,7 +929,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const token = getToken();
         if (!irAccount || !token) return;
         try {
-            const response = await fetch(`${API_BASE_URL}/accounts`, {
+            const response = await fetch(`${API_BASE_URL}/api/accounts`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Erro ao buscar contas.');
@@ -975,7 +975,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const params = new URLSearchParams({ year, month });
         if (account) params.append('account', account);
         try {
-            const response = await fetch(`${API_BASE_URL}/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await fetch(`${API_BASE_URL}/api/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Erro ao buscar despesas:', errorText);
