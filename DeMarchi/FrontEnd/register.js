@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // ALTERAÇÃO 2: Corrija o caminho da rota para /api/register.
-            const response = await fetch(`${API_URL}/api/register`, {
+           const response = await fetch('https://controlegastos-production.up.railway.app/api/register', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
