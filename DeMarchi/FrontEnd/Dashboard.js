@@ -3,10 +3,10 @@
  */
 document.addEventListener('DOMContentLoaded', function() {
 
-    const RAILWAY_BACKEND_URL = 'controlegastos-production.up.railway.app';
+    const RAILWAY_BACKEND_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
     
-    const API_BASE_URL = 'controlegastos-production.up.railway.app';
-    const FILE_BASE_URL = 'controlegastos-production.up.railway.app';
+    const API_BASE_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
+    const FILE_BASE_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
 
     const loginSection = document.getElementById('login-section');
     const dashboardContent = document.getElementById('dashboard-content');
