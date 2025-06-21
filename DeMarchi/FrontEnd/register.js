@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 // ALTERAÇÃO 3: Corrija o link para a página de login/dashboard.
                 // Se a página de login for a `dashboard.html`, está correto.
-                window.location.href = 'Dashboard.html';
+                window.location.href = 'dashboard.html';
             }, 2000);
 
         } catch (error) {
