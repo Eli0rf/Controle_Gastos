@@ -2,8 +2,11 @@
  * dashboard.js - Versão Final e Completa
  */
 document.addEventListener('DOMContentLoaded', function() {
-    const API_BASE_URL = 'http://localhost:3000/api';
-    const FILE_BASE_URL = 'http://localhost:3000';
+
+    const RAILWAY_BACKEND_URL = 'controlegastos-production.up.railway.app';
+    
+    const API_BASE_URL = 'controlegastos-production.up.railway.app';
+    const FILE_BASE_URL = 'controlegastos-production.up.railway.app';
 
     const loginSection = document.getElementById('login-section');
     const dashboardContent = document.getElementById('dashboard-content');
