@@ -574,7 +574,7 @@ app.post('/api/reports/monthly', authenticateToken, async (req, res) => {
     }
 
     // Determina período vigente se for por conta
-    let startDate, endDate, fechamentoDia = null;
+    let startDate, endDate;
     let contaNome = account || 'Todas as Contas';
     if (account && billingPeriods[account]) {
         const { startDay, endDay } = billingPeriods[account];
@@ -586,266 +586,117 @@ app.post('/api/reports/monthly', authenticateToken, async (req, res) => {
             if (endMonth > 12) { endMonth = 1; endYear++; }
         }
         endDate = new Date(endYear, endMonth - 1, endDay);
-        fechamentoDia = endDay;
     } else {
         startDate = new Date(year, month - 1, 1);
         endDate = new Date(year, month, 0);
     }
 
-    // Período do mês anterior
-    let prevStartDate, prevEndDate;
-    if (account && billingPeriods[account]) {
-        const { startDay, endDay } = billingPeriods[account];
-        let prevMonth = month - 1, prevYear = year;
-        if (prevMonth < 1) { prevMonth = 12; prevYear--; }
-        prevStartDate = new Date(prevYear, prevMonth - 1, startDay);
-        let prevEndMonth = prevMonth;
-        let prevEndYear = prevYear;
-        if (endDay < startDay) {
-            prevEndMonth++;
-            if (prevEndMonth > 12) { prevEndMonth = 1; prevEndYear++; }
-        }
-        prevEndDate = new Date(prevEndYear, prevEndMonth - 1, endDay);
-    } else {
-        let prevMonth = month - 1, prevYear = year;
-        if (prevMonth < 1) { prevMonth = 12; prevYear--; }
-        prevStartDate = new Date(prevYear, prevMonth - 1, 1);
-        prevEndDate = new Date(prevYear, prevMonth, 0);
-    }
-
     try {
-        // Busca despesas do período atual e anterior
+        // Busca despesas do período
         let sql = `SELECT * FROM expenses WHERE user_id = ? AND transaction_date >= ? AND transaction_date <= ?`;
         let params = [userId, startDate.toISOString().slice(0,10), endDate.toISOString().slice(0,10)];
-        if (account) { // Se account está preenchido, filtra por conta
+        if (account) {
             sql += ' AND account = ?';
             params.push(account);
         }
         sql += ' ORDER BY transaction_date';
         const [expenses] = await pool.query(sql, params);
 
-        let sqlPrev = `SELECT * FROM expenses WHERE user_id = ? AND transaction_date >= ? AND transaction_date <= ?`;
-        let paramsPrev = [userId, prevStartDate.toISOString().slice(0,10), prevEndDate.toISOString().slice(0,10)];
-        if (account) { sqlPrev += ' AND account = ?'; paramsPrev.push(account); }
-        sqlPrev += ' ORDER BY transaction_date';
-        const [expensesPrev] = await pool.query(sqlPrev, paramsPrev);
-
-        // Soma dos valores empresariais
-        const totalEmpresarial = expenses.filter(e => e.is_business_expense).reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        // Gastos empresariais detalhados
+        const empresariais = expenses.filter(e => e.is_business_expense);
 
         // Resumo geral
         const total = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        const totalEmpresarial = empresariais.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        const totalPessoal = total - totalEmpresarial;
 
-        // Por plano de conta (atual e anterior)
-        const porPlano = {}, porPlanoPrev = {};
+        // Por plano de conta
+        const porPlano = {};
         expenses.forEach(e => {
-            if (e.account_plan_code) porPlano[e.account_plan_code] = (porPlano[e.account_plan_code] || 0) + parseFloat(e.amount);
-        });
-        expensesPrev.forEach(e => {
-            if (e.account_plan_code) porPlanoPrev[e.account_plan_code] = (porPlanoPrev[e.account_plan_code] || 0) + parseFloat(e.amount);
+            const plano = e.account_plan_code || 'Sem Plano';
+            if (!porPlano[plano]) porPlano[plano] = 0;
+            porPlano[plano] += parseFloat(e.amount);
         });
 
-        // Por conta (atual e anterior)
-        const porConta = {}, porContaPrev = {};
+        // Por conta
+        const porConta = {};
         expenses.forEach(e => {
-            porConta[e.account] = (porConta[e.account] || 0) + parseFloat(e.amount);
-        });
-        expensesPrev.forEach(e => {
-            porContaPrev[e.account] = (porContaPrev[e.account] || 0) + parseFloat(e.amount);
-        });
-
-        // Tendência por plano de conta e por conta
-        function tendencia(atual, anterior) {
-            if (anterior === 0 && atual === 0) return 'Estável';
-            if (anterior === 0) return 'Alta';
-            const perc = ((atual - anterior) / anterior) * 100;
-            if (perc > 5) return `Alta (${perc.toFixed(1)}%)`;
-            if (perc < -5) return `Baixa (${perc.toFixed(1)}%)`;
-            return `Estável (${perc.toFixed(1)}%)`;
-        }
-
-        // Planejamento para o próximo mês (parcelas futuras)
-        const nextMonth = parseInt(month) === 12 ? 1 : parseInt(month) + 1;
-        const nextYear = parseInt(month) === 12 ? parseInt(year) + 1 : parseInt(year);
-        let sqlParcelas = `SELECT * FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ? AND total_installments > 1`;
-        let paramsParcelas = [userId, nextYear, nextMonth];
-            if (account) {
-              sqlParcelas += ' AND account = ?';
-                 paramsParcelas.push(account);
-                }
-                const [parcelasFuturas] = await pool.query(sqlParcelas, paramsParcelas);
-
-        // Gráficos
-        const chartCanvas = new ChartJSNodeCanvas({ width: 600, height: 250 });
-        // 1. Gráfico de barras por plano de conta (atual x anterior)
-        const planoLabels = Array.from(new Set([...Object.keys(porPlanoPrev), ...Object.keys(porPlano)])).sort();
-        const planoAtual = planoLabels.map(p => porPlano[p] || 0);
-        const planoAnterior = planoLabels.map(p => porPlanoPrev[p] || 0);
-        const planoChart = await chartCanvas.renderToBuffer({
-            type: 'bar',
-            data: {
-                labels: planoLabels.map(p => `Plano ${p}`),
-                datasets: [
-                    { label: 'Mês Atual', data: planoAtual, backgroundColor: 'rgba(59,130,246,0.7)' },
-                    { label: 'Mês Anterior', data: planoAnterior, backgroundColor: 'rgba(239,68,68,0.7)' }
-                ]
-            },
-            options: { plugins: { legend: { position: 'top' } }, responsive: false }
-        });
-
-        // 2. Gráfico de barras por conta (atual x anterior)
-        const contaLabels = Array.from(new Set([...Object.keys(porContaPrev), ...Object.keys(porConta)])).sort();
-        const contaAtual = contaLabels.map(c => porConta[c] || 0);
-        const contaAnterior = contaLabels.map(c => porContaPrev[c] || 0);
-        const contaChart = await chartCanvas.renderToBuffer({
-            type: 'line',
-            data: {
-                labels: contaLabels,
-                datasets: [
-                    { label: 'Mês Atual', data: contaAtual, backgroundColor: 'rgba(59,130,246,0.7)' },
-                    { label: 'Mês Anterior', data: contaAnterior, backgroundColor: 'rgba(239,68,68,0.7)' }
-                ]
-            },
-            options: { plugins: { legend: { position: 'top' } }, responsive: false }
-        });
-
-        // 3. Gráfico de barras para planejamento (parcelas futuras)
-        const parcelasLabels = parcelasFuturas.map(e => `${e.description} (${new Date(e.transaction_date).toLocaleDateString()})`);
-        const parcelasData = parcelasFuturas.map(e => parseFloat(e.amount));
-        const parcelasChart = await chartCanvas.renderToBuffer({
-            type: 'bar',
-            data: {
-                labels: parcelasLabels,
-                datasets: [
-                    { label: 'Parcelas Futuras', data: parcelasData, backgroundColor: 'rgba(75,192,192,0.7)' }
-                ]
-            },
-            options: { plugins: { legend: { position: 'top' } }, responsive: false }
+            const conta = e.account || 'Sem Conta';
+            if (!porConta[conta]) porConta[conta] = 0;
+            porConta[conta] += parseFloat(e.amount);
         });
 
         // Gera PDF
         const doc = new pdfkit({ autoFirstPage: false });
-
-        // REGISTRE A FONTE NOTO SANS
         doc.registerFont('NotoSans', path.join(__dirname, 'fonts', 'NotoSans-Regular.ttf'));
-
-        // Use a fonte NotoSans como padrão
         doc.font('NotoSans');
 
-        // Exemplo de uso:
+        // Capa
         doc.addPage({ margin: 40, size: 'A4', layout: 'portrait', bufferPages: true });
-        doc.rect(0, 0, doc.page.width, 80).fill('#3B82F6');
-        doc.fillColor('white').fontSize(28).font('NotoSans')
-            .text('📊 Relatório Mensal de Gastos', 0, 25, { align: 'center', width: doc.page.width });
+        doc.rect(0, 0, doc.page.width, 90).fill('#3B82F6');
+        doc.fillColor('white').fontSize(32).text('📅 Relatório Mensal de Gastos', 0, 30, { align: 'center', width: doc.page.width });
         doc.moveDown(2);
-        doc.fillColor('#222').fontSize(16).font('NotoSans')
-            .text(`Período: ${startDate.toLocaleDateString()} a ${endDate.toLocaleDateString()}`, { align: 'center' })
-            .text(`Conta: ${contaNome}`, { align: 'center' });
-        if (fechamentoDia) doc.text(`Dia de Fechamento: ${fechamentoDia}`, { align: 'center' });
+        doc.fillColor('#222').fontSize(16).text(`Período: ${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}`, { align: 'center' });
         doc.moveDown();
-        doc.fontSize(14).fillColor('#10B981').font('NotoSans')
-            .text(`Total gasto: R$ ${total.toFixed(2)}`, { align: 'center' });
-        doc.fontSize(14).fillColor('#F59E0B').font('NotoSans')
-            .text(`Total Empresarial: R$ ${totalEmpresarial.toFixed(2)}`, { align: 'center' });
+        doc.fontSize(14).fillColor('#10B981').text(`Total gasto: R$ ${total.toFixed(2)}`, { align: 'center' });
+        doc.moveDown();
+        doc.fontSize(12).fillColor('#6366F1').text(`Conta: ${contaNome}`, { align: 'center' });
         doc.moveDown(2);
-        doc.fillColor('#6B7280').fontSize(12).font('NotoSans')
-            .text('Relatório gerado automaticamente pelo sistema Controle de Gastos', { align: 'center' });
+        doc.fillColor('#6B7280').fontSize(12).text('Relatório gerado automaticamente pelo sistema Controle de Gastos', { align: 'center' });
 
-        // Gráfico por plano de conta
+        // Resumo geral
         doc.addPage();
-        doc.rect(0, 0, doc.page.width, 40).fill('#F59E0B');
-        doc.fillColor('white').fontSize(20).font('NotoSans')
-            .text('📈 Gastos por Plano de Conta (Comparativo)', 0, 10, { align: 'center', width: doc.page.width });
-        doc.moveDown(2);
-        doc.image(planoChart, { fit: [500, 200], align: 'center' });
+        doc.fontSize(20).fillColor('#3B82F6').text('Resumo Geral', { align: 'center' });
         doc.moveDown();
-        planoLabels.forEach((p, i) => {
-            const tendenciaStr = tendencia(planoAtual[i], planoAnterior[i]);
-            let cor = '#222';
-            if (tendenciaStr.includes('Alta')) cor = '#EF4444';
-            else if (tendenciaStr.includes('Baixa')) cor = '#10B981';
-            doc.fontSize(12).fillColor(cor).font('NotoSans')
-                .text(`Plano ${p}: Atual R$ ${planoAtual[i].toFixed(2)} | Anterior R$ ${planoAnterior[i].toFixed(2)} | Tendência: ${tendenciaStr}`);
+        doc.fontSize(14).fillColor('#222').text(`Total de despesas: R$ ${total.toFixed(2)}`);
+        doc.text(`Total pessoal: R$ ${totalPessoal.toFixed(2)}`);
+        doc.text(`Total empresarial: R$ ${totalEmpresarial.toFixed(2)}`);
+        doc.moveDown();
+
+        // Por plano de conta
+        doc.fontSize(16).fillColor('#6366F1').text('Gastos por Plano de Conta', { underline: true });
+        Object.entries(porPlano).forEach(([plano, valor]) => {
+            doc.fontSize(12).fillColor('#222').text(`Plano ${plano}: R$ ${valor.toFixed(2)}`);
         });
-
-        // Gráfico por conta
-        doc.addPage();
-        doc.rect(0, 0, doc.page.width, 40).fill('#6366F1');
-        doc.fillColor('white').fontSize(20).font('NotoSans')
-            .text('💳 Gastos por Conta (Comparativo)', 0, 10, { align: 'center', width: doc.page.width });
-        doc.moveDown(2);
-        doc.image(contaChart, { fit: [500, 200], align: 'center' });
         doc.moveDown();
-        contaLabels.forEach((c, i) => {
-            const tendenciaStr = tendencia(contaAtual[i], contaAnterior[i]);
-            let cor = '#222';
-            if (tendenciaStr.includes('Alta')) cor = '#EF4444';
-            else if (tendenciaStr.includes('Baixa')) cor = '#10B981';
-            doc.fontSize(12).fillColor(cor).font('NotoSans')
-                .text(`${c}: Atual R$ ${contaAtual[i].toFixed(2)} | Anterior R$ ${contaAnterior[i].toFixed(2)} | Tendência: ${tendenciaStr}`);
-        });
 
-        // Planejamento do próximo mês
+        // Por conta
+        doc.fontSize(16).fillColor('#6366F1').text('Gastos por Conta', { underline: true });
+        Object.entries(porConta).forEach(([conta, valor]) => {
+            doc.fontSize(12).fillColor('#222').text(`${conta}: R$ ${valor.toFixed(2)}`);
+        });
+        doc.moveDown();
+
+        // Detalhe dos gastos empresariais
         doc.addPage();
-        doc.rect(0, 0, doc.page.width, 40).fill('#10B981');
-        doc.fillColor('white').fontSize(20).font('NotoSans')
-            .text('📅 Planejamento Próximo Mês (Parcelas Futuras)', 0, 10, { align: 'center', width: doc.page.width });
-        doc.moveDown(2);
-        if (parcelasFuturas.length > 0) {
-            doc.image(parcelasChart, { fit: [500, 200], align: 'center' });
-            parcelasFuturas.forEach(e => {
-                doc.fontSize(12).fillColor('#222').font('NotoSans')
-                    .text(`💸 ${new Date(e.transaction_date).toLocaleDateString()} | ${e.account} | R$ ${parseFloat(e.amount).toFixed(2)} | ${e.description} | Parcela ${e.installment_number}/${e.total_installments}`);
-            });
+        doc.fontSize(18).fillColor('#EF4444').text('Gastos Empresariais Detalhados', { align: 'center' });
+        doc.moveDown();
+        if (empresariais.length === 0) {
+            doc.fontSize(12).fillColor('#888').text('Nenhum gasto empresarial registrado no período.');
         } else {
-            doc.fontSize(14).fillColor('#6B7280').font('NotoSans-Oblique')
-                .text('Nenhuma parcela futura encontrada.', { align: 'center' });
-        }
-
-        // Gastos empresariais detalhados
-        const empresariais = expenses.filter(e => e.is_business_expense);
-        if (empresariais.length > 0) {
-            doc.addPage();
-            doc.fontSize(16).text('Gastos Empresariais', { underline: true });
-            doc.moveDown();
             empresariais.forEach(e => {
-                doc.fontSize(12).fillColor('#222').font('NotoSans')
-                    .text(`🗓️ ${new Date(e.transaction_date).toLocaleDateString()} | R$ ${parseFloat(e.amount).toFixed(2)} | ${e.description}`);
-                doc.fontSize(12).fillColor('#6366F1').font('NotoSans')
-                    .text(`Plano de Conta: ${e.account_plan_code || '-'}`);
-                doc.fontSize(12).fillColor(e.has_invoice ? '#10B981' : '#EF4444').font('NotoSans')
-                    .text(`Nota Fiscal: ${e.has_invoice ? 'Sim 📄' : 'Não ❌'}`);
-                if (e.invoice_path) {
-                    try {
-                        const imgPath = path.resolve(__dirname, '..', e.invoice_path);
-                        if (fs.existsSync(imgPath)) {
-                            doc.image(imgPath, { fit: [200, 200] });
-                        }
-                    } catch (err) {
-                        doc.fontSize(10).fillColor('#EF4444').text('Erro ao carregar imagem da nota fiscal.');
-                    }
-                }
-                doc.moveDown();
+                doc.fontSize(12).fillColor('#222').text(
+                    `Data: ${new Date(e.transaction_date).toLocaleDateString('pt-BR')} | Valor: R$ ${parseFloat(e.amount).toFixed(2)} | Conta: ${e.account} | Descrição: ${e.description}${e.has_invoice ? ' | Nota Fiscal: Sim' : ''}`
+                );
             });
         }
 
-        // Lista de todas as transações
+        // Todas as despesas do mês
         doc.addPage();
-        doc.rect(0, 0, doc.page.width, 40).fill('#F59E0B');
-        doc.fillColor('white').fontSize(20).font('NotoSans')
-            .text('📋 Todas as Transações do Período', 0, 10, { align: 'center', width: doc.page.width });
-        doc.moveDown(2);
+        doc.fontSize(18).fillColor('#3B82F6').text('Todas as Despesas do Mês', { align: 'center' });
+        doc.moveDown();
         expenses.forEach(e => {
-            doc.fontSize(10).fillColor('#222').font('NotoSans')
-                .text(`🗓️ ${new Date(e.transaction_date).toLocaleDateString()} | R$ ${parseFloat(e.amount).toFixed(2)} | ${e.account} | ${e.description} | ${e.is_business_expense ? 'Empresarial 💼' : 'Pessoal 🏠'} | Plano: ${e.account_plan_code || '-'}`);
+            doc.fontSize(11).fillColor('#222').text(
+                `Data: ${new Date(e.transaction_date).toLocaleDateString('pt-BR')} | Valor: R$ ${parseFloat(e.amount).toFixed(2)} | Conta: ${e.account} | Tipo: ${e.is_business_expense ? 'Empresarial' : 'Pessoal'} | Plano: ${e.account_plan_code || '-'} | Descrição: ${e.description}${e.has_invoice ? ' | Nota Fiscal: Sim' : ''}`
+            );
         });
 
         // Rodapé
-        
-        doc.fontSize(10).fillColor('#6B7280').font('NotoSans')
-            .text('Obrigado por usar o Controle de Gastos! 🚀', 0, doc.page.height - 40, { align: 'center', width: doc.page.width });
+        doc.fontSize(10).fillColor('#6B7280').text('Obrigado por usar o Controle de Gastos! 🚀', 0, doc.page.height - 40, { align: 'center', width: doc.page.width });
 
         doc.end();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=relatorio-mensal-${year}-${month}${account ? '-' + account : ''}.pdf`);
         doc.pipe(res);
     } catch (error) {
         console.error('Erro ao gerar relatório mensal:', error);

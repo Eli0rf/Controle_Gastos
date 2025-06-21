@@ -785,10 +785,27 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function openReportModal() {
-        populateReportModalFilters();
-        if(reportModal) {
-            reportModal.classList.remove('hidden');
-            setTimeout(() => reportModal.classList.remove('opacity-0'), 10);
+        const filterYear = document.getElementById('filter-year');
+        const filterMonth = document.getElementById('filter-month');
+        const reportYear = document.getElementById('report-year');
+        const reportMonth = document.getElementById('report-month');
+
+        // Copia as opções dos filtros principais para o modal
+        if (reportYear && filterYear) {
+            reportYear.innerHTML = filterYear.innerHTML;
+            reportYear.value = filterYear.value;
+        }
+        if (reportMonth && filterMonth) {
+            reportMonth.innerHTML = filterMonth.innerHTML;
+            reportMonth.value = filterMonth.value;
+        }
+
+        // Exibe o modal normalmente
+        const modal = document.getElementById('report-modal');
+        if (modal) {
+            modal.classList.remove('hidden', 'opacity-0');
+            modal.classList.add('flex');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
         }
     }
 
@@ -815,15 +832,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function handleMonthlyReportDownload(e) {
         e.preventDefault();
-        const year = document.getElementById('report-year').value;
-         const month = document.getElementById('report-month').value;
+        const year = document.getElementById('report-year')?.value;
+        const month = document.getElementById('report-month')?.value;
         const account = document.getElementById('filter-account')?.value || '';
-        const submitButton = e.submitter;
 
+        if (!year || !month) {
+            showNotification('Selecione ano e mês para o relatório.', 'error');
+            return;
+        }
+
+        const submitButton = e.submitter;
+    
         if(reportGenerateText) reportGenerateText.classList.add('hidden');
         if(reportLoadingText) reportLoadingText.classList.remove('hidden');
         if(submitButton) submitButton.disabled = true;
-
+    
         try {
             const response = await fetch(`${API_BASE_URL}/reports/monthly`, {
                 method: 'POST',
