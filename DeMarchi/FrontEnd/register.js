@@ -2,7 +2,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const registerForm = document.getElementById('register-form');
     const feedbackMessage = document.getElementById('feedback-message');
     const registerButton = document.getElementById('register-button');
-    const API_URL = 'http://localhost:3000/api';
+
+    // ALTERAÇÃO 1: Usando a URL pública e correta do backend.
+    const API_URL = 'https://controlegastos-production.up.railway.app';
 
     registerForm.addEventListener('submit', async (e) => {
         e.preventDefault(); // Impede o envio padrão do formulário
@@ -17,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
         registerButton.textContent = 'A processar...';
 
         try {
+            // ALTERAÇÃO 2: Corrigido o caminho da rota para /register, conforme definido no server.js.
             const response = await fetch(`${API_URL}/register`, {
                 method: 'POST',
                 headers: {
