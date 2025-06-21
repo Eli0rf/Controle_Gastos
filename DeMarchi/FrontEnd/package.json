@@ -1,0 +1,12 @@
+{
+  "name": "controle-gastos-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Controle de Gastos",
+  "main": "index.html",
+  "scripts": {
+    "start": "http-server -p $PORT"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1"
+  }
+}
