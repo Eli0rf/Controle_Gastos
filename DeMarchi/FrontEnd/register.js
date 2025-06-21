@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const registerButton = document.getElementById('register-button');
 
     // ALTERAÇÃO 1: Usando a URL pública e correta do backend.
-    const API_URL = 'https://controlegastos-production.up.railway.app';
+    const API_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
 
     registerForm.addEventListener('submit', async (e) => {
         e.preventDefault(); // Impede o envio padrão do formulário
