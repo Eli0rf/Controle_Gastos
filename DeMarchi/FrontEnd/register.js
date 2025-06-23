@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const feedbackMessage = document.getElementById('feedback-message');
     const registerButton = document.getElementById('register-button');
 
-    // ALTERAÇÃO 1: Defina a API_URL para o URL base do seu backend no Railway.
+    // Define a URL base do backend no Railway
     const API_URL = 'https://controlegastos-production.up.railway.app';
 
     registerForm.addEventListener('submit', async (e) => {
@@ -21,8 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
         registerButton.textContent = 'A processar...';
 
         try {
-            // ALTERAÇÃO 2: Corrija o caminho da rota para /api/register.
-           const response = await fetch('https://controlegastos-production.up.railway.app/api/register', {
+            // Corrige o caminho da rota para o backend no Railway
+            const response = await fetch(`${API_URL}/api/register`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -43,8 +43,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Redireciona para a página de login após um curto intervalo
             setTimeout(() => {
-                // ALTERAÇÃO 3: Corrija o link para a página de login/dashboard.
-                // Se a página de login for a `dashboard.html`, está correto.
                 window.location.href = 'dashboard.html';
             }, 2000);
 
