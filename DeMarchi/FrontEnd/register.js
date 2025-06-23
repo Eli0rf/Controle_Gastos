@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Redireciona para a página de login após um curto intervalo
             setTimeout(() => {
-                window.location.href = 'dashboard.html';
+                window.location.href = 'Dashboard.html';
             }, 2000);
 
         } catch (error) {
