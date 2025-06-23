@@ -3,9 +3,11 @@
  */
 document.addEventListener('DOMContentLoaded', function() {
 
+    // Define a URL base do backend no Railway
+    const API_BASE_URL = 'https://controlegastos-production.up.railway.app';
+
     const RAILWAY_BACKEND_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
     
-    const API_BASE_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
     const FILE_BASE_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
 
     const loginSection = document.getElementById('login-section');
@@ -351,20 +353,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function fetchAndRenderExpenses() {
         const token = getToken();
-        if (!token) return showLogin();
-        const selectedAccount = document.getElementById('filter-account')?.value || '';
+        if (!token) return;
+
         const params = new URLSearchParams({
             year: filterYear.value,
             month: filterMonth.value,
-            account: selectedAccount
+            account: document.getElementById('filter-account')?.value || ''
         });
+
         try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
-            if (response.status === 401) return showLogin();
+            const response = await fetch(`${API_BASE_URL}/api/expenses?${params.toString()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao buscar despesas.');
+            }
+
             const expenses = await response.json();
-            allExpensesCache = expenses;
             renderExpensesTable(expenses);
-        } catch (error) { console.error('Erro ao buscar despesas:', error); }
+        } catch (error) {
+            console.error(error);
+        }
     }
 
     // FILTRO DE BUSCA NO HISTÓRICO (todas as colunas + tipo + valor min/max)
