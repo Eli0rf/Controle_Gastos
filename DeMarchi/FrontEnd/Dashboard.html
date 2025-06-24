@@ -75,12 +75,37 @@
             pointer-events: none;
         }
         /* Responsividade extra */
+        @media (max-width: 900px) {
+            #interactive-report-modal .max-w-6xl { max-width: 98vw; }
+            #ir-charts { grid-template-columns: 1fr !important; }
+        }
         @media (max-width: 600px) {
             .max-w-sm, .max-w-md, .max-w-6xl { max-width: 98vw !important; }
             .p-8 { padding: 1rem !important; }
             .rounded-xl, .rounded-2xl, .rounded-lg { border-radius: 0.7rem !important; }
             .text-2xl, .text-3xl { font-size: 1.3rem !important; }
             .gap-6 { gap: 1rem !important; }
+            .md\:grid-cols-2, .md\:grid-cols-3, .lg\:grid-cols-2 { grid-template-columns: 1fr !important; }
+            .md\:col-span-2 { grid-column: span 1 / span 1 !important; }
+            .flex, .d-flex { flex-direction: column !important; align-items: stretch !important; }
+            .items-center { align-items: stretch !important; }
+            header > .flex { flex-direction: column !important; gap: 1rem !important; }
+            header h1 { margin-bottom: 0.5rem; }
+            .w-full, .block { width: 100% !important; }
+            .px-4, .px-6 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+            .py-2, .py-6 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+            .shadow-lg, .shadow-md, .shadow-xl { box-shadow: 0 2px 8px #0002 !important; }
+            .overflow-x-auto { overflow-x: auto !important; }
+            .table, table { font-size: 0.95rem !important; }
+            .form-control, .form-control-sm { font-size: 1rem !important; }
+            .rounded-lg { border-radius: 0.7rem !important; }
+            .pl-10 { padding-left: 2.5rem !important; }
+        }
+        /* Ajuste para inputs com ícone */
+        .pl-10 { padding-left: 2.5rem !important; }
+        @media (max-width: 400px) {
+            .text-2xl, .text-3xl { font-size: 1.1rem !important; }
+            .p-6 { padding: 0.5rem !important; }
         }
     </style>
 </head>
@@ -113,7 +138,7 @@
             <h1 class="text-2xl md:text-3xl font-bold text-gray-800 d-flex align-items-center gap-2">
                 <i class="bi bi-bar-chart-fill text-primary"></i> Dashboard
             </h1>
-            <div class="flex items-center gap-2 md:gap-4">
+            <div class="flex items-center gap-2 md:gap-4 flex-wrap">
                 <button id="theme-toggle" class="theme-toggle-btn text-2xl me-2" title="Alternar modo claro/escuro" aria-label="Alternar modo claro/escuro">
                     <i class="bi bi-moon-stars-fill" id="theme-icon" aria-hidden="true"></i>
                 </button>
@@ -292,7 +317,7 @@
             </div>
 
             <div class="bg-white p-6 rounded-lg shadow-md">
-                 <div class="flex justify-between items-center mb-4">
+                 <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
                     <h3 class="text-xl font-semibold">🧾 Histórico de Transações</h3>
                     <div class="flex flex-wrap gap-2 items-center">
                         <input id="filter-search" type="text" placeholder="Buscar por descrição, valor, conta..." aria-label="Buscar transações" class="form-control form-control-sm w-44 me-2" title="Buscar por qualquer campo">
@@ -317,7 +342,7 @@
                     </div>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left">
+                    <table class="w-full text-left min-w-[600px]">
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="p-3">Data</th>
