@@ -53,14 +53,14 @@
         body.dark-mode .bg-white { background: #23272b !important; color: #f1f1f1 !important; }
         body.dark-mode .shadow-lg, body.dark-mode .shadow-md, body.dark-mode .shadow-xl { box-shadow: 0 0 16px #0004 !important; }
         body.dark-mode input, body.dark-mode select, body.dark-mode textarea {
-            background: #23272b !important; color: #f1f1f1 !important; border-color: #666 !important;
+            background: #23272b !important; color: #f1f1f1 !important; border-color: #444 !important;
         }
-        body.dark-mode .modal-overlay { background: #000c !important; }
+        body.dark-mode .modal-overlay { background: #000a !important; }
         body.dark-mode .bg-gradient-to-br { filter: brightness(0.85); }
         body.dark-mode .table { color: #f1f1f1; }
         body.dark-mode .bg-gray-50 { background: #23272b !important; }
         body.dark-mode .text-gray-700, body.dark-mode .text-gray-800, body.dark-mode .text-gray-600 { color: #f1f1f1 !important; }
-        body.dark-mode .border { border-color: #666 !important; }
+        body.dark-mode .border { border-color: #444 !important; }
         body.dark-mode .bg-blue-600 { background: #2563eb !important; }
         body.dark-mode .bg-teal-500 { background: #14b8a6 !important; }
         body.dark-mode .bg-red-500 { background: #dc2626 !important; }
@@ -69,70 +69,24 @@
         body.dark-mode .bg-gradient-to-br { background: linear-gradient(135deg, #23272b 60%, #181a1b 100%) !important; }
         .theme-toggle-btn { cursor: pointer; transition: color 0.2s; }
         .theme-toggle-btn:hover { color: #f59e42; }
-        /* Feedback visual para botões */
-        .btn-loading[disabled] {
-            opacity: 0.7;
-            pointer-events: none;
-        }
-        /* Responsividade extra */
-        @media (max-width: 900px) {
-            #interactive-report-modal .max-w-6xl { max-width: 98vw; }
-            #ir-charts { grid-template-columns: 1fr !important; }
-        }
-        @media (max-width: 600px) {
-            .max-w-sm, .max-w-md, .max-w-6xl { max-width: 98vw !important; }
-            .p-8 { padding: 1rem !important; }
-            .rounded-xl, .rounded-2xl, .rounded-lg { border-radius: 0.7rem !important; }
-            .text-2xl, .text-3xl { font-size: 1.3rem !important; }
-            .gap-6 { gap: 1rem !important; }
-            .md\:grid-cols-2, .md\:grid-cols-3, .lg\:grid-cols-2 { grid-template-columns: 1fr !important; }
-            .md\:col-span-2 { grid-column: span 1 / span 1 !important; }
-            .flex, .d-flex { flex-direction: column !important; align-items: stretch !important; }
-            .items-center { align-items: stretch !important; }
-            header > .flex { flex-direction: column !important; gap: 1rem !important; }
-            header h1 { margin-bottom: 0.5rem; }
-            .w-full, .block { width: 100% !important; }
-            .px-4, .px-6 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
-            .py-2, .py-6 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
-            .shadow-lg, .shadow-md, .shadow-xl { box-shadow: 0 2px 8px #0002 !important; }
-            .overflow-x-auto { overflow-x: auto !important; }
-            .table, table { font-size: 0.95rem !important; }
-            .form-control, .form-control-sm { font-size: 1rem !important; }
-            .rounded-lg { border-radius: 0.7rem !important; }
-            .pl-10 { padding-left: 2.5rem !important; }
-        }
-        /* Ajuste para inputs com ícone */
-        .pl-10 { padding-left: 2.5rem !important; }
-        @media (max-width: 400px) {
-            .text-2xl, .text-3xl { font-size: 1.1rem !important; }
-            .p-6 { padding: 0.5rem !important; }
-        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
-    <!-- Botão retrátil fixo -->
-    <button id="toggle-dashboard-header-btn"
-        class="fixed top-4 left-4 z-50 bg-blue-600 text-white rounded-full shadow-lg p-3 flex items-center justify-center transition-transform duration-300"
-        style="width:48px;height:48px;"
-        aria-label="Mostrar ou ocultar cabeçalho do dashboard"
-        title="Mostrar/Ocultar Cabeçalho">
-        <i id="toggle-dashboard-header-icon" class="fa-solid fa-bars"></i>
-    </button>
 
     <!-- =========== Secção de Login =========== -->
     <div id="login-section" class="flex items-center justify-center min-h-screen bg-gray-200">
         <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm">
             <h2 class="text-2xl font-bold mb-6 text-center text-gray-700">Login</h2>
-            <form id="login-form" aria-label="Formulário de login">
+            <form id="login-form">
                 <div class="mb-4">
-                    <label for="username" class="block text-gray-700 mb-2" aria-label="Usuário">Utilizador</label>
-                    <input type="text" id="username" class="w-full px-3 py-2 border rounded-lg" required aria-required="true" aria-label="Usuário" placeholder="Digite seu usuário">
+                    <label for="username" class="block text-gray-700 mb-2">Utilizador</label>
+                    <input type="text" id="username" class="w-full px-3 py-2 border rounded-lg" required>
                 </div>
                 <div class="mb-6">
-                    <label for="password" class="block text-gray-700 mb-2" aria-label="Senha">Senha</label>
-                    <input type="password" id="password" class="w-full px-3 py-2 border rounded-lg" required aria-required="true" aria-label="Senha" placeholder="Digite sua senha">
+                    <label for="password" class="block text-gray-700 mb-2">Senha</label>
+                    <input type="password" id="password" class="w-full px-3 py-2 border rounded-lg" required>
                 </div>
-                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg" aria-label="Entrar">Entrar</button>
+                <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg">Entrar</button>
             </form>
             <p class="text-center text-sm text-gray-500 mt-4">
                 Não tem uma conta? <a href="register.html" class="font-medium text-blue-600">Crie uma agora</a>
@@ -141,31 +95,31 @@
     </div>
 
     <!-- =========== Conteúdo Principal do Dashboard =========== -->
-    <div id="dashboard-content" class="transition-all duration-300 ease-in-out max-w-full"
-        style="max-width: 100vw;">
-        <header id="dashboard-header" class="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-10 transition-all duration-300">
+    <div id="dashboard-content" class="hidden">
+        <header class="bg-white shadow-md p-4 flex justify-between items-center sticky top-0 z-10">
             <h1 class="text-2xl md:text-3xl font-bold text-gray-800 d-flex align-items-center gap-2">
                 <i class="bi bi-bar-chart-fill text-primary"></i> Dashboard
             </h1>
-            <div class="flex items-center gap-2 md:gap-4 flex-wrap">
-                <button id="theme-toggle" class="theme-toggle-btn text-2xl me-2" title="Alternar modo claro/escuro" aria-label="Alternar modo claro/escuro">
-                    <i class="bi bi-moon-stars-fill" id="theme-icon" aria-hidden="true"></i>
+            <div class="flex items-center gap-2 md:gap-4">
+                <button id="theme-toggle" class="theme-toggle-btn text-2xl me-2" title="Alternar modo claro/escuro">
+                    <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
                 </button>
                 <span id="welcome-user" class="text-gray-600 hidden md:block"></span>
-                <button id="monthly-report-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2" aria-label="Gerar relatório mensal" title="Relatório Mensal">
-                    <i class="fas fa-chart-pie me-2" aria-hidden="true"></i>📅 Mensal
+                <button id="monthly-report-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2">
+                    <i class="fas fa-chart-pie me-2"></i>📅 Mensal
                 </button>
-                <button id="weekly-report-btn" class="bg-teal-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2" aria-label="Gerar relatório semanal" title="Relatório Semanal">
-                    <i class="fas fa-file-pdf me-2" aria-hidden="true"></i>🗓️ Semanal
+                <button id="weekly-report-btn" class="bg-teal-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2">
+                    <i class="fas fa-file-pdf me-2"></i>🗓️ Semanal
                 </button>
-                <button id="interactive-report-btn" class="bg-purple-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2" aria-label="Relatório Interativo" title="Relatório Interativo">
-                    <i class="fas fa-chart-bar me-2" aria-hidden="true"></i>📊 Relatório Interativo
+                <button id="interactive-report-btn" class="bg-purple-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2">
+                    <i class="fas fa-chart-bar me-2"></i>📊 Relatório Interativo
                 </button>
-                <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2" aria-label="Sair" title="Sair">
-                    <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Sair
+                <button id="logout-button" class="bg-red-500 text-white px-4 py-2 rounded-lg d-flex align-items-center gap-2">
+                    <i class="bi bi-box-arrow-right"></i> Sair
                 </button>
             </div>
         </header>
+
         <main class="p-4 md:p-8">
             <!-- Cards com Destaques -->
 
@@ -216,105 +170,63 @@
                 <canvas id="mixed-type-chart"></canvas>
             </div>
 
-            <div class="bg-white p-6 rounded-lg shadow-md mb-8 border-l-4 border-blue-500">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                    <i class="fa-solid fa-plus text-blue-600"></i>
-                    ➕ Adicionar Novo Gasto
-                </h3>
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">➕ Adicionar Novo Gasto</h3>
                 <form id="add-expense-form" class="space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="relative">
-                            <!--<span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-500 pointer-events-none">
-                                <i class="fa-regular fa-calendar"></i>
-                            </span>-->
-                            <label for="form-date" class="inline-flex items-center gap-2 mb-1 bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-semibold shadow-sm">
-                                <i class="fa-regular fa-calendar"></i>
-                                Data da Compra
-                            </label>
-                            <input type="date" id="form-date" name="transaction_date" class="mt-1 block w-full p-2 pl-10 border rounded-lg focus:ring-2 focus:ring-blue-400" required>
+                        <div>
+                            <label for="form-date" class="block text-sm font-medium">Data da Compra</label>
+                            <input type="date" id="form-date" name="transaction_date" class="mt-1 block w-full p-2 border rounded-lg" required>
                         </div>
-                        <div class="relative">
-                            <!--<span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-purple-500 pointer-events-none">
-                                <i class="fa-solid fa-wallet"></i>
-                            </span>-->
-                            <label for="form-account" class="inline-flex items-center gap-2 mb-1 bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-xs font-semibold shadow-sm">
-                                <i class="fa-solid fa-wallet"></i>
-                                Conta
-                            </label>
-                            <select id="form-account" name="account" class="mt-1 block w-full p-2 pl-10 border rounded-lg focus:ring-2 focus:ring-purple-400" required aria-required="true" aria-label="Conta">
+                        <div>
+                            <label for="form-account" class="block text-sm font-medium">Conta</label>
+                            <select id="form-account" name="account" class="mt-1 block w-full p-2 border rounded-lg" required>
                                 <option value="">Selecione uma conta</option>
-                                <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
-                                <option value="Nu Bank Vainer">Nu Bank Vainer</option>
-                                <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
-                                <option value="PicPay Vainer">PicPay Vainer</option>
-                                <option value="Ducatto">Ducatto</option>
-                                <option value="Master">Master</option>
+                                <option>Nu Bank Ketlyn</option>
+                                <option>Nu Vainer</option>
+                                <option>Ourocard Ketlyn</option>
+                                <option>PicPay Vainer</option>
+                                <option>Ducatto</option>
+                                <option>Master</option>
                             </select>
                         </div>
-                        <div class="relative">
-                           <!--<span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-green-500 pointer-events-none">
-                                <i class="fa-solid fa-money-bill-wave"></i>
-                            </span>-->
-                            <label for="form-amount" class="inline-flex items-center gap-2 mb-1 bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-semibold shadow-sm">
-                                <i class="fa-solid fa-money-bill-wave"></i>
-                                Valor da Parcela (R$)
-                            </label>
-                            <input type="number" step="0.01" id="form-amount" name="amount" placeholder="50.99" class="mt-1 block w-full p-2 pl-10 border rounded-lg focus:ring-2 focus:ring-green-400" required>
+                        <div>
+                            <label for="form-amount" class="block text-sm font-medium">Valor da Parcela (R$)</label>
+                            <input type="number" step="0.01" id="form-amount" name="amount" placeholder="50.99" class="mt-1 block w-full p-2 border rounded-lg" required>
                         </div>
-                        <div class="relative">
-                            <!--<span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-orange-500 pointer-events-none">
-                                <i class="fa-solid fa-list-ol"></i>
-                            </span>-->
-                            <label for="form-installments" class="inline-flex items-center gap-2 mb-1 bg-orange-100 text-orange-700 px-2 py-1 rounded-full text-xs font-semibold shadow-sm">
-                                <i class="fa-solid fa-list-ol"></i>
-                                Nº de Parcelas
-                            </label>
-                            <input type="number" id="form-installments" name="total_installments" value="1" min="1" class="mt-1 block w-full p-2 pl-10 border rounded-lg focus:ring-2 focus:ring-orange-400" required>
+                        <div>
+                            <label for="form-installments" class="block text-sm font-medium">Nº de Parcelas</label>
+                            <input type="number" id="form-installments" name="total_installments" value="1" min="1" class="mt-1 block w-full p-2 border rounded-lg" required>
                         </div>
-                        <div class="md:col-span-2 relative">
-                            <!--<span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-pink-500 pointer-events-none">
-                                <i class="fa-solid fa-pen"></i>
-                            </span>-->
-                            <label for="form-description" class="inline-flex items-center gap-2 mb-1 bg-pink-100 text-pink-700 px-2 py-1 rounded-full text-xs font-semibold shadow-sm">
-                                <i class="fa-solid fa-pen"></i>
-                                Descrição
-                            </label>
-                            <input type="text" id="form-description" name="description" placeholder="Ex: Almoço" class="mt-1 block w-full p-2 pl-10 border rounded-lg focus:ring-2 focus:ring-pink-400" required>
+                        <div class="md:col-span-2">
+                            <label for="form-description" class="block text-sm font-medium">Descrição</label>
+                            <input type="text" id="form-description" name="description" placeholder="Ex: Almoço" class="mt-1 block w-full p-2 border rounded-lg" required>
                         </div>
                     </div>
                     <div class="border-t pt-4">
                         <div class="flex items-center">
-                            <input type="checkbox" id="form-is-business" name="is_business_expense" class="h-4 w-4 accent-blue-600">
+                            <input type="checkbox" id="form-is-business" name="is_business_expense" class="h-4 w-4">
                             <label for="form-is-business" class="ml-2 block text-sm font-medium">Marcar como Gasto Empresarial</label>
                         </div>
                     </div>
                     <div class="pl-2 space-y-4">
                         <div id="personal-fields-container" class="field-container">
-                            <label for="form-plan-code" class="inline-flex items-center gap-2 mb-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-semibold shadow-sm">
-                                <i class="fa-solid fa-hashtag"></i>
-                                Plano de Conta Pessoal
-                            </label>
-                            <input type="number" id="form-plan-code" name="account_plan_code" placeholder="Código de 1 a 45" class="mt-1 block w-full md:w-1/2 p-2 border rounded-lg focus:ring-2 focus:ring-yellow-400">
+                            <label for="form-plan-code" class="block text-sm font-medium">Plano de Conta Pessoal</label>
+                            <input type="number" id="form-plan-code" name="account_plan_code" placeholder="Código de 1 a 45" class="mt-1 block w-full md:w-1/2 p-2 border rounded-lg">
                         </div>
                         <div id="business-fields-container" class="field-container hidden space-y-4">
                             <div class="flex items-center">
-                                <input type="checkbox" id="form-has-invoice-check" name="has_invoice" class="h-4 w-4 accent-blue-600">
+                                <input type="checkbox" id="form-has-invoice-check" name="has_invoice" class="h-4 w-4">
                                 <label for="form-has-invoice-check" class="ml-2 block text-sm">Tem Nota Fiscal?</label>
                             </div>
                             <div>
-                                <label for="form-invoice-file" class="inline-flex items-center gap-2 mb-1 bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-semibold shadow-sm">
-                                    <i class="fa-solid fa-file-arrow-up"></i>
-                                    Upload da Nota
-                                </label>
+                                <label for="form-invoice-file" class="block text-sm font-medium">Upload da Nota</label>
                                 <input type="file" id="form-invoice-file" name="invoice" class="mt-1 block w-full text-sm">
                             </div>
                         </div>
                     </div>
                     <div class="border-t pt-4 text-right">
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 transition-colors text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 shadow-md">
-                            <i class="fa-solid fa-plus"></i>
-                            Adicionar Gasto
-                        </button>
+                        <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Adicionar Gasto</button>
                     </div>
                 </form>
             </div>
@@ -325,23 +237,22 @@
             </div>
 
             <div class="bg-white p-6 rounded-lg shadow-md">
-                 <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-xl font-semibold">🧾 Histórico de Transações</h3>
                     <div class="flex flex-wrap gap-2 items-center">
-                        <input id="filter-search" type="text" placeholder="Buscar por descrição, valor, conta..." aria-label="Buscar transações" class="form-control form-control-sm w-44 me-2" title="Buscar por qualquer campo">
-                        <select id="filter-type" class="border rounded px-2 py-1" title="Filtrar por tipo" aria-label="Filtrar por tipo">
+                        <input id="filter-search" type="text" placeholder="Buscar..." class="form-control form-control-sm w-44 me-2" title="Buscar por qualquer campo">
+                        <select id="filter-type" class="border rounded px-2 py-1" title="Filtrar por tipo">
                             <option value="">Todos os Tipos</option>
                             <option value="pessoal">Pessoal</option>
                             <option value="empresa">Empresarial</option>
                         </select>
-                        <input id="filter-min" type="number" step="0.01" placeholder="Valor mín." aria-label="Valor mínimo" class="form-control form-control-sm w-24" title="Valor mínimo">
-                        <input id="filter-max" type="number" step="0.01" placeholder="Valor máx." aria-label="Valor máximo" class="form-control form-control-sm w-24" title="Valor máximo">
-                        <select id="filter-account" class="border rounded px-2 py-1" title="Filtrar por conta" aria-label="Filtrar por conta">
+                        <input id="filter-min" type="number" step="0.01" placeholder="Valor mín." class="form-control form-control-sm w-24" title="Valor mínimo">
+                        <input id="filter-max" type="number" step="0.01" placeholder="Valor máx." class="form-control form-control-sm w-24" title="Valor máximo">
+                        <select id="filter-account" class="border rounded px-2 py-1" title="Filtrar por conta">
                             <option value="">Todas as Contas</option>
-                            <option value="Nu Bank Vainer">Nu Bank Vainer</option>
+                            <option value="Nu Bank Vainer">Nu Vainerr</option>
                             <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
                             <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
-                            <option value="PicPay Vainer">PicPay Vainer</option>
                             <option value="Ducatto">Ducatto</option>
                             <option value="Master">Master</option>
                         </select>
@@ -350,7 +261,7 @@
                     </div>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left min-w-[600px]">
+                    <table class="w-full text-left">
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="p-3">Data</th>
@@ -390,10 +301,10 @@
                     </div>
                 </div>
                 <div class="mt-8 flex justify-end gap-4">
-                    <button type="button" id="cancel-report-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg" aria-label="Cancelar geração de relatório" title="Cancelar">Cancelar</button>
-                    <button type="submit" id="generate-report-btn" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg flex items-center gap-2 btn-loading" aria-label="Gerar relatório mensal" title="Gerar PDF" disabled>
+                    <button type="button" id="cancel-report-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg">
                         <span id="report-generate-text">Gerar PDF</span>
-                        <span id="report-loading-text" class="hidden"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i> A gerar...</span>
+                        <span id="report-loading-text" class="hidden">A gerar...</span>
                     </button>
                 </div>
             </form>
@@ -430,8 +341,8 @@
                     <label class="block text-sm font-medium">Categoria</label>
                     <input type="text" id="ir-category" class="form-control" placeholder="Plano de Conta">
                 </div>
-                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg btn-loading" aria-label="Gerar relatório interativo" title="Gerar relatório" disabled>Gerar</button>
-                <button type="button" id="close-ir-modal" class="bg-gray-300 px-4 py-2 rounded-lg" aria-label="Fechar relatório interativo" title="Fechar">Fechar</button>
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg">Gerar</button>
+                <button type="button" id="close-ir-modal" class="bg-gray-300 px-4 py-2 rounded-lg">Fechar</button>
             </form>
             <div id="ir-charts" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
             <div id="ir-details" class="mt-6"></div>
@@ -459,64 +370,10 @@
             #interactive-report-modal .max-w-6xl { max-width: 98vw; }
             #ir-charts { grid-template-columns: 1fr !important; }
         }
-        /* Dashboard retrátil */
-        #dashboard-content.retracted {
-            max-width: 0 !important;
-            opacity: 0;
-            pointer-events: none;
-            transition: max-width 0.4s, opacity 0.3s;
-            overflow: hidden;
-        }
-        #dashboard-content.expanded {
-            max-width: 100vw !important;
-            opacity: 1;
-            pointer-events: auto;
-            transition: max-width 0.4s, opacity 0.3s;
-        }
-        /* Cabeçalho retrátil */
-        #dashboard-header.retracted {
-            max-height: 0 !important;
-            opacity: 0;
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
-            margin-bottom: 0 !important;
-            overflow: hidden;
-            pointer-events: none;
-            transition: max-height 0.4s, opacity 0.3s, padding 0.3s;
-        }
-        #dashboard-header.expanded {
-            max-height: 200px;
-            opacity: 1;
-            pointer-events: auto;
-            transition: max-height 0.4s, opacity 0.3s, padding 0.3s;
-        }
-        #toggle-dashboard-header-btn {
-            transition: left 0.3s, top 0.3s;
-        }
-        #toggle-dashboard-header-btn.opened {
-            background: #dc2626;
-        }
-        #toggle-dashboard-header-btn.opened #toggle-dashboard-header-icon {
-            transform: rotate(90deg);
-        }
-        @media (max-width: 600px) {
-            #dashboard-content {
-                position: fixed;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background: #f3f4f6;
-                z-index: 40;
-                overflow-y: auto;
-            }
-            #dashboard-header {
-                position: sticky;
-                top: 0;
-                z-index: 20;
-            }
-        }
     </style>
 
     <!-- Toast Notification -->
-<div id="toast-container" class="fixed top-6 right-6 z-50 flex flex-col gap-2" aria-live="polite" aria-atomic="true"></div>
+<div id="toast-cont ainer" class="fixed top-6 right-6 z-50 flex flex-col gap-2"></div>
 
     <!-- AOS Animate On Scroll JS -->
     <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
@@ -526,97 +383,5 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="dashboard.js"></script>
-    <script>
-      // Feedback visual para botões de relatório
-      document.addEventListener('DOMContentLoaded', function() {
-        const reportBtn = document.getElementById('generate-report-btn');
-        const reportForm = document.getElementById('report-form');
-        if (reportForm && reportBtn) {
-          reportForm.addEventListener('submit', function() {
-            reportBtn.disabled = true;
-            document.getElementById('report-generate-text').classList.add('hidden');
-            document.getElementById('report-loading-text').classList.remove('hidden');
-          });
-        }
-        const irForm = document.getElementById('interactive-report-form');
-        const irBtn = irForm ? irForm.querySelector('button[type="submit"]') : null;
-        if (irForm && irBtn) {
-          irForm.addEventListener('submit', function() {
-            irBtn.disabled = true;
-            irBtn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Gerando...';
-          });
-        }
-      });
-      // Cabeçalho retrátil
-      document.addEventListener('DOMContentLoaded', function() {
-        const dashboardHeader = document.getElementById('dashboard-header');
-        const toggleHeaderBtn = document.getElementById('toggle-dashboard-header-btn');
-        const toggleHeaderIcon = document.getElementById('toggle-dashboard-header-icon');
-        let headerVisible = true;
-
-        function showHeader() {
-          dashboardHeader.classList.remove('retracted');
-          dashboardHeader.classList.add('expanded');
-          toggleHeaderBtn.classList.add('opened');
-          toggleHeaderIcon.classList.remove('fa-bars');
-          toggleHeaderIcon.classList.add('fa-xmark');
-          headerVisible = true;
-        }
-        function hideHeader() {
-          dashboardHeader.classList.remove('expanded');
-          dashboardHeader.classList.add('retracted');
-          toggleHeaderBtn.classList.remove('opened');
-          toggleHeaderIcon.classList.remove('fa-xmark');
-          toggleHeaderIcon.classList.add('fa-bars');
-          headerVisible = false;
-        }
-        toggleHeaderBtn.addEventListener('click', function() {
-          if (!headerVisible) {
-            showHeader();
-          } else {
-            hideHeader();
-          }
-        });
-        // Inicialmente, cabeçalho expandido
-        showHeader();
-      });
-      // Dashboard retrátil
-      document.addEventListener('DOMContentLoaded', function() {
-        const dashboard = document.getElementById('dashboard-content');
-        const toggleBtn = document.getElementById('toggle-dashboard-btn');
-        const toggleIcon = document.getElementById('toggle-dashboard-icon');
-        let dashboardVisible = false;
-
-        function showDashboard() {
-          dashboard.classList.remove('retracted');
-          dashboard.classList.add('expanded');
-          dashboard.classList.remove('hidden');
-          toggleBtn.classList.add('opened');
-          toggleIcon.classList.remove('fa-bars');
-          toggleIcon.classList.add('fa-xmark');
-          dashboardVisible = true;
-        }
-        function hideDashboard() {
-          dashboard.classList.remove('expanded');
-          dashboard.classList.add('retracted');
-          setTimeout(() => {
-            if (dashboard.classList.contains('retracted')) dashboard.classList.add('hidden');
-          }, 350);
-          toggleBtn.classList.remove('opened');
-          toggleIcon.classList.remove('fa-xmark');
-          toggleIcon.classList.add('fa-bars');
-          dashboardVisible = false;
-        }
-        toggleBtn.addEventListener('click', function() {
-          if (!dashboardVisible) {
-            showDashboard();
-          } else {
-            hideDashboard();
-          }
-        });
-        // Inicialmente, dashboard oculto (exceto se login já autenticado)
-        hideDashboard();
-      });
-    </script>
 </body>
 </html>
