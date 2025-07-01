@@ -581,7 +581,7 @@ app.post('/api/reports/monthly', authenticateToken, async (req, res) => {
         startDate = new Date(year, month - 1, startDay);
         let endMonth = Number(month);
         let endYear = Number(year);
-        if (endDay < startDay) {
+        if (endDay <= startDay) {
             endMonth++;
             if (endMonth > 12) { endMonth = 1; endYear++; }
         }
@@ -717,11 +717,9 @@ app.listen(PORT, async () => {
 });
 
 const billingPeriods = {
-    'Nu Bank Vainer': { startDay: 3, endDay: 2 },    // 3 a 2 do mês seguinte
-    'Nu Bank Ketlyn': { startDay: 3, endDay: 2 },
-    'Ourocard Ketlyn': { startDay: 11, endDay: 10 }, // 11 a 10 do mês seguinte
-    'Ducatto': { startDay: 11, endDay: 10 },
-    'Master': { startDay: 16, endDay: 15 }
+    'Nu Bank Vainer': { startDay: 4, endDay: 4 },
+    'Nu Bank Ketlyn': { startDay: 4, endDay: 4 },
+    'Ourocard Ketlyn': { startDay: 17, endDay: 17 }
     // Adicione outras contas se necessário
 };
 

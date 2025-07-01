@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterType = document.getElementById('filter-type');
     const filterMin = document.getElementById('filter-min');
     const filterMax = document.getElementById('filter-max');
+    const filterPlan = document.getElementById('filter-plan');
     const totalSpentEl = document.getElementById('total-spent');
     const totalTransactionsEl = document.getElementById('total-transactions');
     const projectionEl = document.getElementById('next-month-projection');
@@ -66,6 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (reportForm) reportForm.addEventListener('submit', handleMonthlyReportDownload);
         if (businessCheckbox) businessCheckbox.addEventListener('change', toggleExpenseFields);
         document.getElementById('filter-account').addEventListener('change', fetchAllData);
+        if (filterPlan) filterPlan.addEventListener('input', applyAllFilters);
         if (interactiveReportBtn) interactiveReportBtn.addEventListener('click', () => {
             if (interactiveReportModal) {
                 interactiveReportModal.classList.remove('hidden');
@@ -373,19 +375,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const expenses = await response.json();
-            renderExpensesTable(expenses);
+            allExpensesCache = expenses; // Salva para filtros
+            applyAllFilters(); // Aplica filtros após buscar
         } catch (error) {
             console.error(error);
         }
     }
 
-    // FILTRO DE BUSCA NO HISTÓRICO (todas as colunas + tipo + valor min/max)
+    // FILTRO DE BUSCA NO HISTÓRICO (todas as colunas + tipo + valor min/max + plano de conta)
     function applyAllFilters() {
         let filtered = allExpensesCache;
         const search = filterSearchInput?.value.trim().toLowerCase() || '';
         const type = filterType?.value || '';
         const min = filterMin?.value ? parseFloat(filterMin.value) : null;
         const max = filterMax?.value ? parseFloat(filterMax.value) : null;
+        const plan = filterPlan?.value.trim().toLowerCase() || '';
         filtered = filtered.filter(e => {
             // Busca texto em todas as colunas
             const data = e.transaction_date ? new Date(e.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'}).toLowerCase() : '';
@@ -410,6 +414,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (type && tipo !== type) match = false;
             if (min !== null && parseFloat(e.amount) < min) match = false;
             if (max !== null && parseFloat(e.amount) > max) match = false;
+            if (plan && !plano.includes(plan)) match = false;
             return match;
         });
         renderExpensesTable(filtered);
@@ -418,6 +423,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (filterType) filterType.addEventListener('change', applyAllFilters);
     if (filterMin) filterMin.addEventListener('input', applyAllFilters);
     if (filterMax) filterMax.addEventListener('input', applyAllFilters);
+    if (filterPlan) filterPlan.addEventListener('input', applyAllFilters);
 
     async function fetchAndRenderDashboardMetrics() {
         const token = getToken();
@@ -453,7 +459,11 @@ document.addEventListener('DOMContentLoaded', function() {
             expenses.forEach(expense => {
                 totalSpent += parseFloat(expense.amount);
                 const invoiceLink = expense.invoice_path ? `<a href="${FILE_BASE_URL}/${expense.invoice_path}" target="_blank" class="text-blue-600"><i class="fas fa-file-invoice"></i></a>` : 'N/A';
-                const planCode = expense.account_plan_code !== null && expense.account_plan_code !== undefined ? expense.account_plan_code : '-';
+                // Corrigido: mostra plano de conta corretamente, inclusive string vazia ou null
+                let planCode = '-';
+                if (expense.account_plan_code !== null && expense.account_plan_code !== undefined && expense.account_plan_code !== '') {
+                    planCode = expense.account_plan_code;
+                }
                 const row = document.createElement('tr');
                 row.className = 'border-b hover:bg-gray-50';
                 row.innerHTML = `
@@ -804,6 +814,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const filterMonth = document.getElementById('filter-month');
         const reportYear = document.getElementById('report-year');
         const reportMonth = document.getElementById('report-month');
+        const filterAccount = document.getElementById('filter-account');
+        const reportAccount = document.getElementById('report-account');
 
         // Copia as opções dos filtros principais para o modal
         if (reportYear && filterYear) {
@@ -813,6 +825,20 @@ document.addEventListener('DOMContentLoaded', function() {
         if (reportMonth && filterMonth) {
             reportMonth.innerHTML = filterMonth.innerHTML;
             reportMonth.value = filterMonth.value;
+        }
+
+        // Preenche as contas disponíveis no filtro do modal
+        if (reportAccount && filterAccount) {
+            reportAccount.innerHTML = '';
+            for (let i = 0; i < filterAccount.options.length; i++) {
+                const opt = filterAccount.options[i];
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.textContent;
+                reportAccount.appendChild(option);
+            }
+            // Seleciona a mesma conta do filtro principal, se houver
+            reportAccount.value = filterAccount.value;
         }
 
         // Exibe o modal normalmente
@@ -831,25 +857,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function populateReportModalFilters() {
-        const yearSelect = document.getElementById('report-year');
-        const monthSelect = document.getElementById('report-month');
-        if(!yearSelect || !monthSelect) return;
-        yearSelect.innerHTML = '';
-        monthSelect.innerHTML = '';
-        const currentYear = new Date().getFullYear();
-        for (let i = currentYear; i >= currentYear - 5; i--) yearSelect.add(new Option(i, i));
-        const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-        months.forEach((month, index) => monthSelect.add(new Option(month, index + 1)));
-        yearSelect.value = filterYear.value;
-        monthSelect.value = filterMonth.value;
-    }
-
     async function handleMonthlyReportDownload(e) {
         e.preventDefault();
         const year = document.getElementById('report-year')?.value;
         const month = document.getElementById('report-month')?.value;
-        const account = document.getElementById('filter-account')?.value || '';
+        // Use o filtro do modal, não o da tela principal
+        const account = document.getElementById('report-account')?.value || '';
 
         if (!year || !month) {
             showNotification('Selecione ano e mês para o relatório.', 'error');
@@ -857,11 +870,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const submitButton = e.submitter;
-    
+
         if(reportGenerateText) reportGenerateText.classList.add('hidden');
         if(reportLoadingText) reportLoadingText.classList.remove('hidden');
         if(submitButton) submitButton.disabled = true;
-    
+
         try {
             const response = await fetch(`${API_BASE_URL}/api/reports/monthly`, {
                 method: 'POST',

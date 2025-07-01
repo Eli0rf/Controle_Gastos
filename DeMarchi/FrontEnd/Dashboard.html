@@ -250,18 +250,20 @@
                         <input id="filter-max" type="number" step="0.01" placeholder="Valor máx." class="form-control form-control-sm w-24" title="Valor máximo">
                         <select id="filter-account" class="border rounded px-2 py-1" title="Filtrar por conta">
                             <option value="">Todas as Contas</option>
-                            <option value="Nu Bank Vainer">Nu Vainerr</option>
                             <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
+                            <option value="Nu Vainer">Nu Vainer</option>
                             <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
+                            <option value="PicPay Vainer">PicPay Vainer</option>
                             <option value="Ducatto">Ducatto</option>
                             <option value="Master">Master</option>
                         </select>
+                        <input id="filter-plan" type="text" placeholder="Plano de Conta" class="form-control form-control-sm w-24" title="Filtrar por plano de conta">
                         <select id="filter-year" class="border rounded px-2 py-1" title="Filtrar por ano"></select>
                         <select id="filter-month" class="border rounded px-2 py-1" title="Filtrar por mês"></select>
                     </div>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left">
+                    <table class="w-full text-left min-w-[700px] md:min-w-0">
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="p-3">Data</th>
@@ -287,7 +289,7 @@
     </div>
 
     <div id="report-modal" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
-        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md md:max-w-md sm:max-w-full" style="max-width:98vw;">
             <h3 class="text-2xl font-bold mb-6">Gerar Relatório Mensal</h3>
             <form id="report-form">
                 <div class="grid grid-cols-2 gap-4">
@@ -299,8 +301,14 @@
                         <label for="report-month" class="block text-sm font-medium text-gray-700">Mês</label>
                         <select id="report-month" class="mt-1 block w-full p-2 border rounded-lg"></select>
                     </div>
+                    <div class="col-span-2">
+                        <label for="report-account" class="block text-sm font-medium text-gray-700">Conta</label>
+                        <select id="report-account" class="mt-1 block w-full p-2 border rounded-lg">
+                            <option value="">Todas as Contas</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="mt-8 flex justify-end gap-4">
+                <div class="mt-8 flex flex-col md:flex-row justify-end gap-4">
                     <button type="button" id="cancel-report-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg">Cancelar</button>
                     <button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg">
                         <span id="report-generate-text">Gerar PDF</span>
@@ -370,10 +378,22 @@
             #interactive-report-modal .max-w-6xl { max-width: 98vw; }
             #ir-charts { grid-template-columns: 1fr !important; }
         }
+        @media (max-width: 600px) {
+            #report-modal .max-w-md, #report-modal .max-w-full, #report-modal form {
+                max-width: 98vw !important;
+                width: 100% !important;
+            }
+            #report-modal form > .grid {
+                grid-template-columns: 1fr !important;
+            }
+            .overflow-x-auto table {
+                min-width: 600px;
+            }
+        }
     </style>
 
     <!-- Toast Notification -->
-<div id="toast-cont ainer" class="fixed top-6 right-6 z-50 flex flex-col gap-2"></div>
+    <div id="toast-container" class="fixed top-6 right-6 z-50 flex flex-col gap-2"></div>
 
     <!-- AOS Animate On Scroll JS -->
     <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
