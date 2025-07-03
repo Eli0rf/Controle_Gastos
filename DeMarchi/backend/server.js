@@ -301,8 +301,9 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
     }
 });
 
-// --- 8.1. ROTA DE METAS POR PLANO DE CONTAS (ALERTAS) ---
-const metas = {
+// --- 8.1. ROTA DE TETOS POR PLANO DE CONTAS (ALERTAS) ---
+// Renomeado de metas para tetos, pois o foco é não ultrapassar o limite de gastos
+const tetos = {
     1: 1000.00, 2: 2782.47, 3: 3165.53, 4: 350.00, 5: 2100.00,
     6: 550.00, 7: 270.00, 8: 1700.00, 9: 1700.00, 10: 230.00,
     11: 1895.40, 12: 1937.70, 13: 220.00, 14: 55.00, 15: 129.90,
@@ -314,7 +315,7 @@ const metas = {
     41: 360.00, 42: 0.00, 43: 210.00, 44: 200.00, 45: 12500.00
 };
 
-// Rota protegida para metas por plano de contas
+// Rota protegida para tetos por plano de contas
 app.get('/api/expenses-goals', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -336,67 +337,68 @@ app.get('/api/expenses-goals', authenticateToken, async (req, res) => {
 
         const [results] = await pool.query(sql, params);
 
-        const dataWithGoals = results.map(item => {
+        const dataWithLimits = results.map(item => {
             const planoId = parseInt(item.account_plan_code);
-            const meta = metas[planoId] || 0;
-            const percentual = meta > 0 ? (item.Total / meta) * 100 : 0;
+            const teto = tetos[planoId] || 0;
+            const percentual = teto > 0 ? (item.Total / teto) * 100 : 0;
             let alerta = null;
 
+            // Mensagens focadas em não ultrapassar o teto
             if (percentual > 101) {
                 alerta = {
                     percentual: 101,
-                    mensagem: `Atenção! Você ultrapassou 100% da meta para o plano ${planoId}.`
+                    mensagem: `Atenção! Você ULTRAPASSOU o teto de gastos do plano ${planoId}.`
                 };
             } else if (percentual >= 100) {
                 alerta = {
                     percentual: 100,
-                    mensagem: `Atenção! Você atingiu 100% da meta para o plano ${planoId}.`
+                    mensagem: `Atenção! Você atingiu o teto de gastos do plano ${planoId}.`
                 };
             } else if (percentual >= 95) {
                 alerta = {
                     percentual: 95,
-                    mensagem: `Atenção! Você atingiu 95% da meta para o plano ${planoId}.`
+                    mensagem: `Alerta: Você está em 95% do teto de gastos do plano ${planoId}.`
                 };
             } else if (percentual >= 90) {
                 alerta = {
                     percentual: 90,
-                    mensagem: `Atenção! Você atingiu 90% da meta para o plano ${planoId}.`
+                    mensagem: `Alerta: Você está em 90% do teto de gastos do plano ${planoId}.`
                 };
             } else if (percentual >= 85) {
                 alerta = {
                     percentual: 85,
-                    mensagem: `Atenção! Você atingiu 85% da meta para o plano ${planoId}.`
+                    mensagem: `Alerta: Você está em 85% do teto de gastos do plano ${planoId}.`
                 };
             } else if (percentual >= 80) {
                 alerta = {
                     percentual: 80,
-                    mensagem: `Atenção! Você atingiu 80% da meta para o plano ${planoId}.`
+                    mensagem: `Alerta: Você está em 80% do teto de gastos do plano ${planoId}.`
                 };
             } else if (percentual >= 70) {
                 alerta = {
                     percentual: 70,
-                    mensagem: `Atenção! Você atingiu 70% da meta para o plano ${planoId}.`
+                    mensagem: `Alerta: Você está em 70% do teto de gastos do plano ${planoId}.`
                 };
             } else if (percentual >= 50) {
                 alerta = {
                     percentual: 50,
-                    mensagem: `Atenção! Você atingiu 50% da meta para o plano ${planoId}.`
+                    mensagem: `Alerta: Você está em 50% do teto de gastos do plano ${planoId}.`
                 };
             }
 
             return {
                 PlanoContasID: planoId,
                 Total: item.Total,
-                Meta: meta,
+                Teto: teto,
                 Percentual: percentual,
                 Alerta: alerta
             };
         });
 
-        res.json(dataWithGoals);
+        res.json(dataWithLimits);
     } catch (error) {
-        console.error('Erro ao buscar metas:', error);
-        res.status(500).json({ message: 'Erro ao buscar metas.' });
+        console.error('Erro ao buscar tetos:', error);
+        res.status(500).json({ message: 'Erro ao buscar tetos.' });
     }
 });
 

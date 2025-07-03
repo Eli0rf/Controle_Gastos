@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
         await fetchAndRenderGoalsChart();
     }
 
-    // --- Busca metas e renderiza gráfico de metas/alertas ---
+    // --- Busca tetos e renderiza gráfico de limites/alertas ---
     async function fetchAndRenderGoalsChart() {
         const token = getToken();
         if (!token) return;
@@ -168,10 +168,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(`${API_BASE_URL}/api/expenses-goals?${params.toString()}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (!response.ok) throw new Error('Erro ao buscar metas.');
+            if (!response.ok) throw new Error('Erro ao buscar limites.');
             const data = await response.json();
 
-            // Notificações de metas (alertas)
+            // Notificações de limites (alertas)
             data.forEach(item => {
                 if (item.Alerta && !sessionStorage.getItem(`alerta_${item.PlanoContasID}_${item.Alerta.percentual}_${filterYear.value}_${filterMonth.value}`)) {
                     showNotification(item.Alerta.mensagem);
@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', function() {
             renderGoalsChart(data);
             renderGoalsPlanChart(data);
         } catch (error) {
-            console.error('Erro ao buscar metas:', error);
+            console.error('Erro ao buscar limites:', error);
         }
     }
 
@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const labels = data.map(item => `Plano ${item.PlanoContasID}`);
         const values = data.map(item => Number(item.Total));
-        const metas = data.map(item => Number(item.Meta));
+        const tetos = data.map(item => Number(item.Teto));
 
         goalsChart = new Chart(ctx, {
             type: 'bar',
@@ -208,8 +208,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         borderWidth: 1
                     },
                     {
-                        label: 'Meta',
-                        data: metas,
+                        label: 'Teto de Gastos',
+                        data: tetos,
                         type: 'line',
                         fill: false,
                         borderColor: 'rgba(75, 192, 192, 1)',
@@ -234,10 +234,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const sorted = [...data].sort((a, b) => a.PlanoContasID - b.PlanoContasID);
 
         const labels = sorted.map(item => `Plano ${item.PlanoContasID}`);
-        const metas = sorted.map(item => Number(item.Meta));
+        const tetos = sorted.map(item => Number(item.Teto));
         const atingido = sorted.map(item => Number(item.Total));
         const percentuais = sorted.map((item, i) =>
-            metas[i] > 0 ? Math.round((atingido[i] / metas[i]) * 100) : 0
+            tetos[i] > 0 ? Math.round((atingido[i] / tetos[i]) * 100) : 0
         );
 
         goalsPlanChart = new Chart(ctx, {
@@ -246,14 +246,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Meta',
-                        data: metas,
+                        label: 'Teto de Gastos',
+                        data: tetos,
                         backgroundColor: 'rgba(75, 192, 192, 0.4)',
                         borderColor: 'rgba(75, 192, 192, 1)',
                         borderWidth: 1
                     },
                     {
-                        label: 'Atingido',
+                        label: 'Gasto Atual',
                         data: atingido,
                         backgroundColor: 'rgba(255, 99, 132, 0.4)',
                         borderColor: 'rgba(255, 99, 132, 1)',
@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             font: { weight: 'bold' },
                             formatter: function(value, context) {
                                 const i = context.dataIndex;
-                                return metas[i] > 0 ? percentuais[i] + '%' : '';
+                                return tetos[i] > 0 ? percentuais[i] + '%' : '';
                             }
                         }
                     }
@@ -278,8 +278,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     legend: { position: 'top' },
                     datalabels: {
                         display: function(context) {
-                            // Só mostra percentual na barra "Atingido"
-                            return context.dataset.label === 'Atingido';
+                            // Só mostra percentual na barra "Gasto Atual"
+                            return context.dataset.label === 'Gasto Atual';
                         }
                     }
                 },
