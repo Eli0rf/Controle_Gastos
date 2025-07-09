@@ -1145,4 +1145,107 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         irDetails.scrollIntoView({ behavior: 'smooth' });
     }
+
+    // ========== NOVO CÓDIGO PARA CONSULTA DE FATURAMENTO =========
+    const billingForm = document.getElementById('billing-period-form');
+    const billingResults = document.getElementById('billing-results');
+
+    const billingPeriods = {
+        'Nu Bank Vainer': { startDay: 2 },
+        'Nu Bank Ketlyn': { startDay: 2 },
+        'Ourocard Ketlyn': { startDay: 17 }
+    };
+
+    billingForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const account = document.getElementById('billing-account').value;
+        const month = parseInt(document.getElementById('billing-month').value, 10);
+        const year = new Date().getFullYear();
+
+        if (!account || !month) {
+            alert('Por favor, selecione uma conta e um mês.');
+            return;
+        }
+
+        const period = billingPeriods[account];
+        if (!period) {
+            alert('Conta inválida.');
+            return;
+        }
+
+        // Calcula o intervalo de datas para o período vigente
+        const startDate = new Date(year, month - 1, period.startDay); // Dia de início do mês anterior
+        const endDate = new Date(year, month, period.startDay); // Dia de início do mês de referência
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/expenses?account=${account}&start_date=${startDate.toISOString().slice(0, 10)}&end_date=${endDate.toISOString().slice(0, 10)}`, {
+                headers: { Authorization: `Bearer ${getToken()}` }
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao buscar dados.');
+            }
+
+            const expenses = await response.json();
+
+            // Filtra os gastos para garantir que estejam dentro do intervalo
+            const filteredExpenses = expenses.filter(expense => {
+                const expenseDate = new Date(expense.transaction_date);
+                return expenseDate >= startDate && expenseDate < endDate;
+            });
+
+            renderBillingResults(filteredExpenses, account, startDate, endDate);
+        } catch (error) {
+            console.error(error);
+            billingResults.innerHTML = `<p class="text-red-600">Erro ao buscar dados: ${error.message}</p>`;
+        }
+    });
+
+    function renderBillingResults(expenses, account, startDate, endDate) {
+        billingResults.innerHTML = `
+            <h4 class="text-lg font-semibold text-gray-700 mb-4">Resultados para ${account}</h4>
+            <p class="text-sm text-gray-500 mb-4">Período: ${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}</p>
+        `;
+
+        if (expenses.length === 0) {
+            billingResults.innerHTML += `<p class="text-gray-500">Nenhum gasto encontrado neste período.</p>`;
+            return;
+        }
+
+        const groupedByDay = groupExpensesByDay(expenses);
+
+        const table = document.createElement('table');
+        table.className = 'table table-bordered w-full text-sm';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Dia</th>
+                    <th>Descrição</th>
+                    <th>Valor</th>
+                    <th>Conta</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${Object.keys(groupedByDay).map(day => `
+                    <tr>
+                        <td>${day}</td>
+                        <td>${groupedByDay[day].map(expense => expense.description).join(', ')}</td>
+                        <td>R$ ${groupedByDay[day].reduce((sum, expense) => sum + parseFloat(expense.amount), 0).toFixed(2)}</td>
+                        <td>${groupedByDay[day][0].account}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        billingResults.appendChild(table);
+    }
+
+    function groupExpensesByDay(expenses) {
+        return expenses.reduce((acc, expense) => {
+            const day = new Date(expense.transaction_date).toLocaleDateString('pt-BR');
+            if (!acc[day]) acc[day] = [];
+            acc[day].push(expense);
+            return acc;
+        }, {});
+    }
 });
