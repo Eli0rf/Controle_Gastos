@@ -227,9 +227,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderGoalsPlanChart(data = []) {
-        const ctx = document.getElementById('goals-plan-chart')?.getContext('2d');
+        const canvas = document.getElementById('goals-plan-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        if (goalsPlanChart) goalsPlanChart.destroy();
+        goalsPlanChart = destroyChartInstance(goalsPlanChart, 'goals-plan-chart');
 
         const sorted = [...data].sort((a, b) => a.PlanoContasID - b.PlanoContasID);
 
@@ -390,6 +392,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const min = filterMin?.value ? parseFloat(filterMin.value) : null;
         const max = filterMax?.value ? parseFloat(filterMax.value) : null;
         const plan = filterPlan?.value.trim().toLowerCase() || '';
+        const filterAccountValue = document.getElementById('filter-account')?.value || '';
+
         filtered = filtered.filter(e => {
             // Busca texto em todas as colunas
             const data = e.transaction_date ? new Date(e.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'}).toLowerCase() : '';
@@ -415,6 +419,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (min !== null && parseFloat(e.amount) < min) match = false;
             if (max !== null && parseFloat(e.amount) > max) match = false;
             if (plan && !plano.includes(plan)) match = false;
+            // Corrige filtro para ser igual ao banco
+            if (filterAccountValue && e.account !== filterAccountValue) match = false;
             return match;
         });
         renderExpensesTable(filtered);
@@ -520,7 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        if (expensesLineChart) expensesLineChart.destroy();
+        expensesLineChart = destroyChartInstance(expensesLineChart, 'expenses-line-chart');
         const year = parseInt(filterYear.value, 10);
         const month = parseInt(filterMonth.value, 10);
         const daysInMonth = new Date(year, month, 0).getDate();
@@ -591,7 +597,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        if (expensesPieChart) expensesPieChart.destroy();
+        expensesPieChart = destroyChartInstance(expensesPieChart, 'expenses-pie-chart');
         if (!data.length) {
             showNoDataMessage('expenses-pie-chart', 'Sem dados para este período.');
             return;
@@ -649,7 +655,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        if (mixedTypeChart) mixedTypeChart.destroy();
+        mixedTypeChart = destroyChartInstance(mixedTypeChart, 'mixed-type-chart');
         if (!data.length) {
             showNoDataMessage('mixed-type-chart', 'Sem dados para este período.');
             return;
@@ -708,7 +714,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        if (planChart) planChart.destroy();
+        planChart = destroyChartInstance(planChart, 'plan-chart');
         if (!data.length) {
             showNoDataMessage('plan-chart', 'Sem dados para este período.');
             return;
@@ -1150,94 +1156,138 @@ document.addEventListener('DOMContentLoaded', function() {
     const billingForm = document.getElementById('billing-period-form');
     const billingResults = document.getElementById('billing-results');
 
+    // Definição dos períodos de fatura para cada conta
     const billingPeriods = {
-        'Nu Bank Vainer': { startDay: 2 },
-        'Nu Bank Ketlyn': { startDay: 2 },
-        'Ourocard Ketlyn': { startDay: 17 }
+        'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
+        'Nu Vainer': { startDay: 2, endDay: 1 },
+        'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
+        'PicPay Vainer': { startDay: 1, endDay: 30 },
+        'Ducatto': { startDay: 1, endDay: 30 },
+        'Master': { startDay: 1, endDay: 30 }
     };
 
     billingForm.addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        const account = document.getElementById('billing-account').value;
-        const month = parseInt(document.getElementById('billing-month').value, 10);
-        const year = new Date().getFullYear();
+        // Use o ano e mês dos filtros principais do histórico de despesas
+        const filterYearEl = document.getElementById('filter-year');
+        const filterMonthEl = document.getElementById('filter-month');
+        const year = filterYearEl && filterYearEl.value ? parseInt(filterYearEl.value, 10) : new Date().getFullYear();
+        const month = filterMonthEl && filterMonthEl.value ? parseInt(filterMonthEl.value, 10) : (new Date().getMonth() + 1);
 
-        if (!account || !month) {
-            alert('Por favor, selecione uma conta e um mês.');
+        // Alternativamente, se quiser usar o mês do select do quadro de fatura:
+        // const month = parseInt(document.getElementById('billing-month').value, 10);
+
+        if (!month) {
+            alert('Por favor, selecione um mês.');
             return;
         }
 
-        const period = billingPeriods[account];
-        if (!period) {
-            alert('Conta inválida.');
-            return;
-        }
+        // Lista das contas exatamente como no banco de dados
+        const accounts = [
+            'Nu Bank Ketlyn',
+            'Nu Vainer',
+            'Ourocard Ketlyn',
+            'PicPay Vainer',
+            'Ducatto',
+            'Master'
+        ];
 
-        // Calcula o intervalo de datas para o período vigente
-        const startDate = new Date(year, month - 1, period.startDay); // Dia de início do mês anterior
-        const endDate = new Date(year, month, period.startDay); // Dia de início do mês de referência
+        billingResults.innerHTML = '<div class="text-gray-500 mb-2">Buscando dados...</div>';
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses?account=${account}&start_date=${startDate.toISOString().slice(0, 10)}&end_date=${endDate.toISOString().slice(0, 10)}`, {
-                headers: { Authorization: `Bearer ${getToken()}` }
-            });
+        // Busca e exibe resultados para cada conta
+        const allResults = await Promise.all(accounts.map(async (account) => {
+            const period = billingPeriods[account];
+            if (!period) return { account, error: 'Conta inválida.' };
 
-            if (!response.ok) {
-                throw new Error('Erro ao buscar dados.');
+            // Calcula o intervalo de datas para o período vigente
+            let startDate, endDate;
+            if (account === 'Nu Bank Ketlyn' || account === 'Nu Vainer') {
+                // Nubank: do dia 2 do mês até dia 1 do mês seguinte (inclusive)
+                startDate = new Date(year, month - 1, 2);
+                endDate = new Date(year, month, 1);
+            } else if (account === 'Ourocard Ketlyn') {
+                // Ourocard: do dia 17 do mês até dia 16 do mês seguinte (inclusive)
+                startDate = new Date(year, month - 1, 17);
+                endDate = new Date(year, month, 16);
+            } else {
+                // fallback
+                startDate = new Date(year, month - 1, 1);
+                endDate = new Date(year, month, 0);
             }
 
-            const expenses = await response.json();
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/expenses?account=${encodeURIComponent(account)}&start_date=${startDate.toISOString().slice(0, 10)}&end_date=${endDate.toISOString().slice(0, 10)}`,
+                    { headers: { Authorization: `Bearer ${getToken()}` } }
+                );
+                if (!response.ok) throw new Error('Erro ao buscar dados.');
+                const expenses = await response.json();
 
-            // Filtra os gastos para garantir que estejam dentro do intervalo
-            const filteredExpenses = expenses.filter(expense => {
-                const expenseDate = new Date(expense.transaction_date);
-                return expenseDate >= startDate && expenseDate < endDate;
-            });
+                // Filtra os gastos para garantir que estejam dentro do intervalo
+                const filteredExpenses = expenses.filter(expense => {
+                    const expenseDate = new Date(expense.transaction_date);
+                    return expenseDate >= startDate && expenseDate <= endDate;
+                });
 
-            renderBillingResults(filteredExpenses, account, startDate, endDate);
-        } catch (error) {
-            console.error(error);
-            billingResults.innerHTML = `<p class="text-red-600">Erro ao buscar dados: ${error.message}</p>`;
-        }
+                return { account, startDate, endDate, expenses: filteredExpenses };
+            } catch (error) {
+                return { account, error: error.message };
+            }
+        }));
+
+        // Renderiza os resultados de todas as contas
+        billingResults.innerHTML = '';
+        allResults.forEach(result => {
+            if (result.error) {
+                billingResults.innerHTML += `<div class="mb-6"><h4 class="text-lg font-semibold text-gray-700 mb-2">${result.account}</h4><p class="text-red-600">${result.error}</p></div>`;
+                return;
+            }
+            billingResults.innerHTML += renderBillingResultsBlock(result.expenses, result.account, result.startDate, result.endDate);
+        });
     });
 
-    function renderBillingResults(expenses, account, startDate, endDate) {
-        billingResults.innerHTML = `
-            <h4 class="text-lg font-semibold text-gray-700 mb-4">Resultados para ${account}</h4>
-            <p class="text-sm text-gray-500 mb-4">Período: ${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}</p>
+    // Função para renderizar o bloco de resultados de uma conta
+    function renderBillingResultsBlock(expenses, account, startDate, endDate) {
+        let html = `
+            <div class="mb-8">
+                <h4 class="text-lg font-semibold text-gray-700 mb-2">Resultados para ${account}</h4>
+                <p class="text-sm text-gray-500 mb-2">Período: ${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}</p>
         `;
 
-        if (expenses.length === 0) {
-            billingResults.innerHTML += `<p class="text-gray-500">Nenhum gasto encontrado neste período.</p>`;
-            return;
+        if (!expenses || expenses.length === 0) {
+            html += `<p class="text-gray-500">Nenhum gasto encontrado neste período.</p></div>`;
+            return html;
         }
 
         const groupedByDay = groupExpensesByDay(expenses);
 
-        const table = document.createElement('table');
-        table.className = 'table table-bordered w-full text-sm';
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <th>Dia</th>
-                    <th>Descrição</th>
-                    <th>Valor</th>
-                    <th>Conta</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${Object.keys(groupedByDay).map(day => `
+        html += `
+            <div class="overflow-x-auto">
+            <table class="table table-bordered w-full text-sm">
+                <thead>
                     <tr>
-                        <td>${day}</td>
-                        <td>${groupedByDay[day].map(expense => expense.description).join(', ')}</td>
-                        <td>R$ ${groupedByDay[day].reduce((sum, expense) => sum + parseFloat(expense.amount), 0).toFixed(2)}</td>
-                        <td>${groupedByDay[day][0].account}</td>
+                        <th>Dia</th>
+                        <th>Descrição</th>
+                        <th>Valor</th>
+                        <th>Conta</th>
                     </tr>
-                `).join('')}
-            </tbody>
+                </thead>
+                <tbody>
+                    ${Object.keys(groupedByDay).map(day => `
+                        <tr>
+                            <td>${day}</td>
+                            <td>${groupedByDay[day].map(expense => expense.description).join(', ')}</td>
+                            <td>R$ ${groupedByDay[day].reduce((sum, expense) => sum + parseFloat(expense.amount), 0).toFixed(2)}</td>
+                            <td>${groupedByDay[day][0].account}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            </div>
+        </div>
         `;
-        billingResults.appendChild(table);
+        return html;
     }
 
     function groupExpensesByDay(expenses) {
@@ -1247,5 +1297,31 @@ document.addEventListener('DOMContentLoaded', function() {
             acc[day].push(expense);
             return acc;
         }, {});
+    }
+
+    // Helper to destroy Chart.js instance safely and clear Chart registry
+    function destroyChartInstance(chartVar, canvasId) {
+        if (chartVar && typeof chartVar.destroy === 'function') {
+            try {
+                chartVar.destroy();
+            } catch (e) {
+                // fallback: forcibly clear the canvas if Chart.js fails
+                const canvas = document.getElementById(canvasId);
+                if (canvas && canvas.getContext) {
+                    const ctx = canvas.getContext('2d');
+                    ctx && ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            }
+        }
+        // Remove lingering Chart.js reference from Chart registry (Chart 3+)
+        if (window.Chart && window.Chart.instances) {
+            Object.keys(window.Chart.instances).forEach(key => {
+                const chart = window.Chart.instances[key];
+                if (chart && chart.canvas && chart.canvas.id === canvasId) {
+                    delete window.Chart.instances[key];
+                }
+            });
+        }
+        return null;
     }
 });

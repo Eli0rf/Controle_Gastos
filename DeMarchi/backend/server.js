@@ -171,7 +171,7 @@ app.post('/api/expenses', authenticateToken, upload.single('invoice'), async (re
 
 app.get('/api/expenses', authenticateToken, async (req, res) => {
     const userId = req.user.id;
-    const { year, month, account } = req.query;
+    const { year, month, account, start_date, end_date } = req.query;
 
     try {
         let sql = 'SELECT * FROM expenses WHERE user_id = ?';
@@ -183,16 +183,16 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
             params.push(account);
         }
 
-        // Filtro por período de fatura
-        if (account && billingPeriods[account] && year && month) {
+        // Permite busca por intervalo de datas explícito (usado na busca de fatura)
+        if (start_date && end_date) {
+            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
+            params.push(start_date, end_date);
+        } else if (account && billingPeriods[account] && year && month) {
             const { startDay, endDay } = billingPeriods[account];
-            // Exemplo: mês=6 (junho), ano=2025, startDay=3, endDay=2
-            // Período: 03/06/2025 a 02/07/2025
             const startDate = new Date(year, month - 1, startDay);
             let endMonth = Number(month);
             let endYear = Number(year);
             if (endDay < startDay) {
-                // Fecha no mês seguinte
                 endMonth++;
                 if (endMonth > 12) { endMonth = 1; endYear++; }
             }
@@ -201,7 +201,6 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
             sql += ' AND transaction_date >= ? AND transaction_date <= ?';
             params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
         } else if (year && month) {
-            // Filtro padrão por mês
             sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
             params.push(year, month);
         }
@@ -719,10 +718,12 @@ app.listen(PORT, async () => {
 });
 
 const billingPeriods = {
-    'Nu Bank Vainer': { startDay: 4, endDay: 4 },
-    'Nu Bank Ketlyn': { startDay: 4, endDay: 4 },
-    'Ourocard Ketlyn': { startDay: 17, endDay: 17 }
-    // Adicione outras contas se necessário
+    'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
+    'Nu Vainer': { startDay: 2, endDay: 1 },
+    'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
+    'PicPay Vainer': { startDay: 1, endDay: 30 },
+    'Ducatto': { startDay: 1, endDay: 30 },
+    'Master': { startDay: 1, endDay: 30 }
 };
 
 app.get('/api/accounts', authenticateToken, async (req, res) => {
