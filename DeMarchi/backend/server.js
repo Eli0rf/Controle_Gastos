@@ -176,7 +176,7 @@ app.post('/api/expenses', authenticateToken, upload.single('invoice'), async (re
 
 app.get('/api/expenses', authenticateToken, async (req, res) => {
     const userId = req.user.id;
-    const { year, month, account, start_date, end_date } = req.query;
+    const { year, month, account, start_date, end_date, include_recurring } = req.query;
 
     try {
         let sql = 'SELECT * FROM expenses WHERE user_id = ?';
@@ -188,23 +188,43 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
             params.push(account);
         }
 
+        // Filtrar gastos recorrentes se não for explicitamente solicitado
+        if (include_recurring !== 'true') {
+            // Para contas que não são PIX ou Boleto, não incluir gastos recorrentes
+            // Para PIX e Boleto, incluir apenas se for busca por fatura
+            if (account && ['PIX', 'Boleto'].includes(account)) {
+                // Se for busca por período de fatura, incluir recorrentes
+                // Se for busca geral, excluir recorrentes
+                if (!start_date && !end_date) {
+                    sql += ' AND is_recurring_expense = 0';
+                }
+            }
+        }
+
         // Permite busca por intervalo de datas explícito (usado na busca de fatura)
         if (start_date && end_date) {
             sql += ' AND transaction_date >= ? AND transaction_date <= ?';
             params.push(start_date, end_date);
         } else if (account && billingPeriods[account] && year && month) {
-            const { startDay, endDay } = billingPeriods[account];
-            const startDate = new Date(year, month - 1, startDay);
-            let endMonth = Number(month);
-            let endYear = Number(year);
-            if (endDay < startDay) {
-                endMonth++;
-                if (endMonth > 12) { endMonth = 1; endYear++; }
-            }
-            const endDate = new Date(endYear, endMonth - 1, endDay);
+            // Para contas PIX e Boleto, não aplicar filtro de período de fatura
+            if (!billingPeriods[account].isRecurring) {
+                const { startDay, endDay } = billingPeriods[account];
+                const startDate = new Date(year, month - 1, startDay);
+                let endMonth = Number(month);
+                let endYear = Number(year);
+                if (endDay < startDay) {
+                    endMonth++;
+                    if (endMonth > 12) { endMonth = 1; endYear++; }
+                }
+                const endDate = new Date(endYear, endMonth - 1, endDay);
 
-            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
-            params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
+                sql += ' AND transaction_date >= ? AND transaction_date <= ?';
+                params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
+            } else {
+                // Para PIX e Boleto, filtrar apenas por mês/ano normal
+                sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
+                params.push(year, month);
+            }
         } else if (year && month) {
             sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
             params.push(year, month);
@@ -710,12 +730,240 @@ app.post('/api/reports/monthly', authenticateToken, async (req, res) => {
     }
 });
 
+// --- 8.2. ROTAS PARA GASTOS RECORRENTES MENSAIS ---
+
+// Criar novo gasto recorrente
+app.post('/api/recurring-expenses', authenticateToken, async (req, res) => {
+    try {
+        const {
+            description,
+            amount,
+            account,
+            account_plan_code,
+            is_business_expense,
+            day_of_month
+        } = req.body;
+
+        const userId = req.user.id;
+
+        // Validação
+        if (!description || !amount || !account) {
+            return res.status(400).json({ message: 'Descrição, valor e conta são obrigatórios.' });
+        }
+
+        // Verificar se é conta que permite gastos recorrentes (PIX ou Boleto)
+        if (!['PIX', 'Boleto'].includes(account)) {
+            return res.status(400).json({ message: 'Gastos recorrentes só são permitidos para contas PIX e Boleto.' });
+        }
+
+        await pool.query(
+            `INSERT INTO recurring_expenses (user_id, description, amount, account, account_plan_code, is_business_expense, day_of_month) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [userId, description, amount, account, account_plan_code || null, is_business_expense || 0, day_of_month || 1]
+        );
+
+        res.status(201).json({ message: 'Gasto recorrente criado com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao criar gasto recorrente:', error);
+        res.status(500).json({ message: 'Erro ao criar gasto recorrente.' });
+    }
+});
+
+// Listar gastos recorrentes
+app.get('/api/recurring-expenses', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [rows] = await pool.query(
+            'SELECT * FROM recurring_expenses WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC',
+            [userId]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Erro ao buscar gastos recorrentes:', error);
+        res.status(500).json({ message: 'Erro ao buscar gastos recorrentes.' });
+    }
+});
+
+// Atualizar gasto recorrente
+app.put('/api/recurring-expenses/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+        const {
+            description,
+            amount,
+            account,
+            account_plan_code,
+            is_business_expense,
+            day_of_month
+        } = req.body;
+
+        // Verificar se o gasto recorrente pertence ao usuário
+        const [existing] = await pool.query(
+            'SELECT id FROM recurring_expenses WHERE id = ? AND user_id = ?',
+            [id, userId]
+        );
+
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Gasto recorrente não encontrado.' });
+        }
+
+        await pool.query(
+            `UPDATE recurring_expenses 
+             SET description = ?, amount = ?, account = ?, account_plan_code = ?, 
+                 is_business_expense = ?, day_of_month = ? 
+             WHERE id = ? AND user_id = ?`,
+            [description, amount, account, account_plan_code || null, is_business_expense || 0, day_of_month || 1, id, userId]
+        );
+
+        res.json({ message: 'Gasto recorrente atualizado com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao atualizar gasto recorrente:', error);
+        res.status(500).json({ message: 'Erro ao atualizar gasto recorrente.' });
+    }
+});
+
+// Deletar gasto recorrente
+app.delete('/api/recurring-expenses/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        const [result] = await pool.query(
+            'UPDATE recurring_expenses SET is_active = 0 WHERE id = ? AND user_id = ?',
+            [id, userId]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Gasto recorrente não encontrado.' });
+        }
+
+        res.json({ message: 'Gasto recorrente removido com sucesso!' });
+    } catch (error) {
+        console.error('Erro ao remover gasto recorrente:', error);
+        res.status(500).json({ message: 'Erro ao remover gasto recorrente.' });
+    }
+});
+
+// Processar gastos recorrentes para um mês específico
+app.post('/api/recurring-expenses/process', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { year, month } = req.body;
+
+        if (!year || !month) {
+            return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
+        }
+
+        const monthKey = `${year}-${month.toString().padStart(2, '0')}`;
+        
+        // Buscar gastos recorrentes ativos que ainda não foram processados para este mês
+        const [recurringExpenses] = await pool.query(`
+            SELECT re.* FROM recurring_expenses re
+            LEFT JOIN recurring_expense_processing rep ON re.id = rep.recurring_expense_id AND rep.processed_month = ?
+            WHERE re.user_id = ? AND re.is_active = 1 AND rep.id IS NULL
+        `, [monthKey, userId]);
+
+        let processedCount = 0;
+
+        for (const recurring of recurringExpenses) {
+            // Criar a data baseada no dia configurado
+            const transactionDate = new Date(year, month - 1, recurring.day_of_month);
+            
+            // Se o dia não existe no mês (ex: 31 em fevereiro), usar o último dia do mês
+            if (transactionDate.getMonth() !== month - 1) {
+                transactionDate.setDate(0); // Vai para o último dia do mês anterior
+            }
+
+            const formattedDate = transactionDate.toISOString().split('T')[0];
+
+            // Inserir na tabela de expenses
+            const [expenseResult] = await pool.query(
+                `INSERT INTO expenses (user_id, transaction_date, amount, description, account, 
+                 is_business_expense, account_plan_code, is_recurring_expense, total_installments) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)",
+                [userId, formattedDate, recurring.amount, recurring.description, 
+                 recurring.account, recurring.is_business_expense, recurring.account_plan_code]
+            );
+
+            // Registrar o processamento
+            await pool.query(
+                'INSERT INTO recurring_expense_processing (recurring_expense_id, processed_month, expense_id) VALUES (?, ?, ?)',
+                [recurring.id, monthKey, expenseResult.insertId]
+            );
+
+            processedCount++;
+        }
+
+        res.json({ 
+            message: 'Gastos recorrentes processados para ' + month + '/' + year + ': ' + processedCount,
+            processedCount 
+        });
+    } catch (error) {
+        console.error('Erro ao processar gastos recorrentes:', error);
+        res.status(500).json({ message: 'Erro ao processar gastos recorrentes.' });
+    }
+});
+
+// --- 8.3. ROTAS MODIFICADAS PARA FILTRAR GASTOS RECORRENTES ---
+app.get('/api/expenses', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    const { year, month, account, start_date, end_date, recurring } = req.query;
+
+    try {
+        let sql = 'SELECT * FROM expenses WHERE user_id = ?';
+        const params = [userId];
+
+        // Filtro por conta
+        if (account) {
+            sql += ' AND account = ?';
+            params.push(account);
+        }
+
+        // Filtro por despesas recorrentes
+        if (recurring === 'true') {
+            sql += ' AND is_recurring_expense = 1';
+        } else if (recurring === 'false') {
+            sql += ' AND is_recurring_expense = 0';
+        }
+
+        // Permite busca por intervalo de datas explícito (usado na busca de fatura)
+        if (start_date && end_date) {
+            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
+            params.push(start_date, end_date);
+        } else if (account && billingPeriods[account] && year && month) {
+            const { startDay, endDay } = billingPeriods[account];
+            const startDate = new Date(year, month - 1, startDay);
+            let endMonth = Number(month);
+            let endYear = Number(year);
+            if (endDay < startDay) {
+                endMonth++;
+                if (endMonth > 12) { endMonth = 1; endYear++; }
+            }
+            const endDate = new Date(endYear, endMonth - 1, endDay);
+
+            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
+            params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
+        } else if (year && month) {
+            sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
+            params.push(year, month);
+        }
+
+        sql += ' ORDER BY transaction_date DESC';
+        const [rows] = await pool.query(sql, params);
+        res.json(rows);
+    } catch (error) {
+        console.error('Erro ao buscar despesas:', error);
+        res.status(500).json({ message: 'Erro ao buscar despesas.' });
+    }
+});
+
 // --- 9. INICIALIZAÇÃO DO SERVIDOR ---
 app.listen(PORT, async () => {
     try {
         await pool.getConnection();
         console.log('Conexão com o MySQL estabelecida com sucesso.');
-        console.log(`Servidor a ser executado na porta ${PORT}`);
+        console.log('Servidor a ser executado na porta ' + PORT);
     } catch (error) {
         console.error('ERRO CRÍTICO AO CONECTAR COM O BANCO DE DADOS:', error.message);
         process.exit(1);
@@ -727,8 +975,8 @@ const billingPeriods = {
     'Nu Vainer': { startDay: 2, endDay: 1 },
     'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
     'PicPay Vainer': { startDay: 1, endDay: 30 },
-    'Ducatto': { startDay: 1, endDay: 30 },
-    'Master': { startDay: 1, endDay: 30 }
+    'PIX': { startDay: 1, endDay: 30, isRecurring: true },
+    'Boleto': { startDay: 1, endDay: 30, isRecurring: true }
 };
 
 app.get('/api/accounts', authenticateToken, async (req, res) => {

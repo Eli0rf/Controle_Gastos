@@ -47,6 +47,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const irCharts = document.getElementById('ir-charts');
     const irDetails = document.getElementById('ir-details');
 
+    // ========== GASTOS RECORRENTES ==========
+    const recurringExpensesBtn = document.getElementById('recurring-expenses-btn');
+    const recurringModal = document.getElementById('recurring-modal');
+    const closeRecurringModalBtn = document.getElementById('close-recurring-modal');
+    const recurringForm = document.getElementById('recurring-form');
+    const recurringList = document.getElementById('recurring-list');
+    const processRecurringBtn = document.getElementById('process-recurring-btn');
+
     let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
     let allExpensesCache = [];
 
@@ -81,6 +89,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => interactiveReportModal.classList.add('hidden'), 300);
             }
         });
+        
+        // Event listeners para gastos recorrentes
+        if (recurringExpensesBtn) recurringExpensesBtn.addEventListener('click', openRecurringModal);
+        if (closeRecurringModalBtn) closeRecurringModalBtn.addEventListener('click', closeRecurringModal);
+        if (recurringForm) recurringForm.addEventListener('submit', handleRecurringExpenseSubmit);
+        if (processRecurringBtn) processRecurringBtn.addEventListener('click', processRecurringExpenses);
     }
 
     async function handleLogin(e) {
@@ -1324,4 +1338,186 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return null;
     }
+
+    // ========== FUNÇÕES PARA GASTOS RECORRENTES ==========
+    
+    async function openRecurringModal() {
+        if (recurringModal) {
+            recurringModal.classList.remove('hidden');
+            setTimeout(() => recurringModal.classList.remove('opacity-0'), 10);
+            await loadRecurringExpenses();
+        }
+    }
+
+    function closeRecurringModal() {
+        if (recurringModal) {
+            recurringModal.classList.add('opacity-0');
+            setTimeout(() => recurringModal.classList.add('hidden'), 300);
+        }
+    }
+
+    async function loadRecurringExpenses() {
+        const token = getToken();
+        if (!token) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Erro ao carregar gastos recorrentes');
+
+            const recurringExpenses = await response.json();
+            renderRecurringExpensesList(recurringExpenses);
+        } catch (error) {
+            console.error('Erro ao carregar gastos recorrentes:', error);
+            showNotification('Erro ao carregar gastos recorrentes', 'error');
+        }
+    }
+
+    function renderRecurringExpensesList(expenses) {
+        if (!recurringList) return;
+
+        if (expenses.length === 0) {
+            recurringList.innerHTML = '<p class="text-gray-500 text-center">Nenhum gasto recorrente cadastrado.</p>';
+            return;
+        }
+
+        recurringList.innerHTML = expenses.map(expense => `
+            <div class="bg-gray-50 p-4 rounded-lg mb-3">
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <h4 class="font-medium text-gray-800">${expense.description}</h4>
+                        <p class="text-sm text-gray-600">
+                            <strong>Valor:</strong> €${parseFloat(expense.amount).toFixed(2)} | 
+                            <strong>Conta:</strong> ${expense.account} | 
+                            <strong>Dia:</strong> ${expense.day_of_month}
+                        </p>
+                        ${expense.account_plan_code ? `<p class="text-sm text-gray-600"><strong>Plano:</strong> ${expense.account_plan_code}</p>` : ''}
+                        <p class="text-sm ${expense.is_business_expense ? 'text-blue-600' : 'text-green-600'}">
+                            ${expense.is_business_expense ? '💼 Empresarial' : '🏠 Pessoal'}
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="editRecurringExpense(${expense.id})" 
+                                class="bg-blue-500 text-white px-3 py-1 rounded text-sm">
+                            Editar
+                        </button>
+                        <button onclick="deleteRecurringExpense(${expense.id})" 
+                                class="bg-red-500 text-white px-3 py-1 rounded text-sm">
+                            Remover
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function handleRecurringExpenseSubmit(e) {
+        e.preventDefault();
+        const token = getToken();
+        if (!token) return;
+
+        const formData = new FormData(recurringForm);
+        const data = {
+            description: formData.get('description'),
+            amount: parseFloat(formData.get('amount')),
+            account: formData.get('account'),
+            account_plan_code: formData.get('account_plan_code') || null,
+            is_business_expense: formData.get('is_business_expense') === 'on',
+            day_of_month: parseInt(formData.get('day_of_month')) || 1
+        };
+
+        // Validar se é conta permitida
+        if (!['PIX', 'Boleto'].includes(data.account)) {
+            showNotification('Gastos recorrentes só são permitidos para contas PIX e Boleto', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) throw new Error('Erro ao criar gasto recorrente');
+
+            showNotification('Gasto recorrente criado com sucesso!', 'success');
+            recurringForm.reset();
+            await loadRecurringExpenses();
+        } catch (error) {
+            console.error('Erro ao criar gasto recorrente:', error);
+            showNotification('Erro ao criar gasto recorrente', 'error');
+        }
+    }
+
+    async function deleteRecurringExpense(id) {
+        if (!confirm('Tem certeza que deseja remover este gasto recorrente?')) return;
+
+        const token = getToken();
+        if (!token) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Erro ao remover gasto recorrente');
+
+            showNotification('Gasto recorrente removido com sucesso!', 'success');
+            await loadRecurringExpenses();
+        } catch (error) {
+            console.error('Erro ao remover gasto recorrente:', error);
+            showNotification('Erro ao remover gasto recorrente', 'error');
+        }
+    }
+
+    async function processRecurringExpenses() {
+        const token = getToken();
+        if (!token) return;
+
+        const year = filterYear.value;
+        const month = filterMonth.value;
+
+        if (!year || !month) {
+            showNotification('Selecione ano e mês para processar', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses/process`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ year: parseInt(year), month: parseInt(month) })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) throw new Error(result.message);
+
+            showNotification(result.message, 'success');
+            await fetchAllData(); // Recarregar dados do dashboard
+        } catch (error) {
+            console.error('Erro ao processar gastos recorrentes:', error);
+            showNotification('Erro ao processar gastos recorrentes', 'error');
+        }
+    }
+
+    // Tornar funções globais para uso nos botões
+    window.editRecurringExpense = async function(id) {
+        // Implementar funcionalidade de edição
+        showNotification('Funcionalidade de edição em desenvolvimento', 'info');
+    };
+
+    window.deleteRecurringExpense = deleteRecurringExpense;
+
+    // ========== FIM FUNÇÕES GASTOS RECORRENTES ==========
 });
