@@ -55,6 +55,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const recurringList = document.getElementById('recurring-list');
     const processRecurringBtn = document.getElementById('process-recurring-btn');
 
+    // ========== SISTEMA DE ABAS ==========
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    // ========== PIX & BOLETO ==========
+    const pixTotal = document.getElementById('pix-total');
+    const boletoTotal = document.getElementById('boleto-total');
+    const pixBoletoTransactions = document.getElementById('pix-boleto-transactions');
+    const pixBoletoGrandTotal = document.getElementById('pix-boleto-grand-total');
+    const pixBoletoType = document.getElementById('pix-boleto-type');
+    const pixBoletoYear = document.getElementById('pix-boleto-year');
+    const pixBoletoMonth = document.getElementById('pix-boleto-month');
+    const pixBoletoSearch = document.getElementById('pix-boleto-search');
+    const pixDetailsTable = document.getElementById('pix-details-table');
+    const boletoDetailsTable = document.getElementById('boleto-details-table');
+    const pixCategorySummary = document.getElementById('pix-category-summary');
+    const boletoCategorySummary = document.getElementById('boleto-category-summary');
+
     let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
     let allExpensesCache = [];
 
@@ -142,6 +160,8 @@ document.addEventListener('DOMContentLoaded', function() {
         populateFilterOptions();
         fetchAllData();
         toggleExpenseFields();
+        initializeTabs();
+        initializePixBoletoFilters();
     }
 
     function populateFilterOptions() {
@@ -1518,6 +1538,290 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.deleteRecurringExpense = deleteRecurringExpense;
+
+    // ========== SISTEMA DE ABAS ==========
+    function initializeTabs() {
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const tabId = button.dataset.tab;
+                switchTab(tabId);
+            });
+        });
+    }
+
+    function switchTab(tabId) {
+        // Remove active class from all buttons
+        tabButtons.forEach(btn => {
+            btn.classList.remove('active', 'bg-blue-500', 'text-white');
+            btn.classList.add('hover:bg-gray-50');
+        });
+
+        // Hide all tab contents
+        tabContents.forEach(content => {
+            content.classList.add('hidden');
+        });
+
+        // Activate selected tab
+        const activeButton = document.querySelector(`[data-tab="${tabId}"]`);
+        const activeContent = document.getElementById(`${tabId}-tab`);
+
+        if (activeButton && activeContent) {
+            activeButton.classList.add('active', 'bg-blue-500', 'text-white');
+            activeButton.classList.remove('hover:bg-gray-50');
+            activeContent.classList.remove('hidden');
+
+            // Load specific data for tab
+            if (tabId === 'pix-boleto') {
+                loadPixBoletoData();
+            }
+        }
+    }
+
+    // ========== PIX & BOLETO FUNCTIONS ==========
+    async function loadPixBoletoData() {
+        try {
+            const token = getToken();
+            if (!token) return;
+
+            const year = pixBoletoYear?.value || new Date().getFullYear();
+            const month = pixBoletoMonth?.value || (new Date().getMonth() + 1);
+            const type = pixBoletoType?.value || '';
+            const search = pixBoletoSearch?.value || '';
+
+            // Buscar dados PIX
+            const pixData = await fetch(`${API_BASE_URL}/api/expenses?account=PIX&year=${year}&month=${month}&include_recurring=true`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(res => res.json());
+
+            // Buscar dados Boleto
+            const boletoData = await fetch(`${API_BASE_URL}/api/expenses?account=Boleto&year=${year}&month=${month}&include_recurring=true`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(res => res.json());
+
+            // Filtrar por busca se necessário
+            const filteredPix = search ? pixData.filter(expense => 
+                expense.description.toLowerCase().includes(search.toLowerCase())
+            ) : pixData;
+
+            const filteredBoleto = search ? boletoData.filter(expense => 
+                expense.description.toLowerCase().includes(search.toLowerCase())
+            ) : boletoData;
+
+            // Atualizar resumos
+            updatePixBoletoSummary(filteredPix, filteredBoleto);
+
+            // Atualizar tabelas
+            updatePixBoletoTables(filteredPix, filteredBoleto);
+
+            // Atualizar resumos por categoria
+            updatePixBoletoCategorySummary(filteredPix, filteredBoleto);
+
+            // Atualizar gráficos
+            updatePixBoletoCharts(filteredPix, filteredBoleto);
+
+        } catch (error) {
+            console.error('Erro ao carregar dados PIX/Boleto:', error);
+        }
+    }
+
+    function updatePixBoletoSummary(pixData, boletoData) {
+        const pixTotalValue = pixData.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+        const boletoTotalValue = boletoData.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+        const totalTransactions = pixData.length + boletoData.length;
+        const grandTotal = pixTotalValue + boletoTotalValue;
+
+        if (pixTotal) pixTotal.textContent = `R$ ${pixTotalValue.toFixed(2)}`;
+        if (boletoTotal) boletoTotal.textContent = `R$ ${boletoTotalValue.toFixed(2)}`;
+        if (pixBoletoTransactions) pixBoletoTransactions.textContent = totalTransactions;
+        if (pixBoletoGrandTotal) pixBoletoGrandTotal.textContent = `R$ ${grandTotal.toFixed(2)}`;
+    }
+
+    function updatePixBoletoTables(pixData, boletoData) {
+        // Atualizar tabela PIX
+        if (pixDetailsTable) {
+            pixDetailsTable.innerHTML = '';
+            pixData.forEach(expense => {
+                const row = document.createElement('tr');
+                row.className = 'pix-row';
+                row.innerHTML = `
+                    <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
+                    <td class="p-3">${expense.description}</td>
+                    <td class="p-3 font-semibold text-green-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
+                    <td class="p-3">${expense.is_business_expense ? 'Empresarial' : 'Pessoal'}</td>
+                    <td class="p-3">${expense.account_plan_code || '-'}</td>
+                    <td class="p-3">${expense.is_recurring_expense ? '<span class="recurring-badge">Recorrente</span>' : '-'}</td>
+                `;
+                pixDetailsTable.appendChild(row);
+            });
+        }
+
+        // Atualizar tabela Boleto
+        if (boletoDetailsTable) {
+            boletoDetailsTable.innerHTML = '';
+            boletoData.forEach(expense => {
+                const row = document.createElement('tr');
+                row.className = 'boleto-row';
+                row.innerHTML = `
+                    <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
+                    <td class="p-3">${expense.description}</td>
+                    <td class="p-3 font-semibold text-blue-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
+                    <td class="p-3">${expense.is_business_expense ? 'Empresarial' : 'Pessoal'}</td>
+                    <td class="p-3">${expense.account_plan_code || '-'}</td>
+                    <td class="p-3">${expense.is_recurring_expense ? '<span class="recurring-badge">Recorrente</span>' : '-'}</td>
+                `;
+                boletoDetailsTable.appendChild(row);
+            });
+        }
+    }
+
+    function updatePixBoletoCategorySummary(pixData, boletoData) {
+        // Resumo PIX por plano de conta
+        const pixByPlan = {};
+        pixData.forEach(expense => {
+            const plan = expense.account_plan_code || 'Sem Plano';
+            pixByPlan[plan] = (pixByPlan[plan] || 0) + parseFloat(expense.amount);
+        });
+
+        if (pixCategorySummary) {
+            pixCategorySummary.innerHTML = '';
+            Object.entries(pixByPlan).forEach(([plan, total]) => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-2 bg-green-50 rounded';
+                div.innerHTML = `
+                    <span class="font-medium">Plano ${plan}:</span>
+                    <span class="font-bold text-green-600">R$ ${total.toFixed(2)}</span>
+                `;
+                pixCategorySummary.appendChild(div);
+            });
+        }
+
+        // Resumo Boleto por plano de conta
+        const boletoByPlan = {};
+        boletoData.forEach(expense => {
+            const plan = expense.account_plan_code || 'Sem Plano';
+            boletoByPlan[plan] = (boletoByPlan[plan] || 0) + parseFloat(expense.amount);
+        });
+
+        if (boletoCategorySummary) {
+            boletoCategorySummary.innerHTML = '';
+            Object.entries(boletoByPlan).forEach(([plan, total]) => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-2 bg-blue-50 rounded';
+                div.innerHTML = `
+                    <span class="font-medium">Plano ${plan}:</span>
+                    <span class="font-bold text-blue-600">R$ ${total.toFixed(2)}</span>
+                `;
+                boletoCategorySummary.appendChild(div);
+            });
+        }
+    }
+
+    function updatePixBoletoCharts(pixData, boletoData) {
+        // Gráfico de comparação PIX vs Boleto
+        const comparisonCtx = document.getElementById('pix-boleto-comparison-chart')?.getContext('2d');
+        if (comparisonCtx) {
+            const pixTotal = pixData.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+            const boletoTotal = boletoData.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+
+            new Chart(comparisonCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['PIX', 'Boleto'],
+                    datasets: [{
+                        data: [pixTotal, boletoTotal],
+                        backgroundColor: ['#22c55e', '#3b82f6'],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        // Gráfico de evolução mensal (últimos 6 meses)
+        const evolutionCtx = document.getElementById('pix-boleto-evolution-chart')?.getContext('2d');
+        if (evolutionCtx) {
+            // Implementar lógica para últimos 6 meses
+            const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'];
+            const pixValues = [100, 150, 200, 180, 220, 250]; // Dados de exemplo
+            const boletoValues = [80, 90, 120, 110, 130, 140]; // Dados de exemplo
+
+            new Chart(evolutionCtx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [
+                        {
+                            label: 'PIX',
+                            data: pixValues,
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Boleto',
+                            data: boletoValues,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+    }
+
+    function initializePixBoletoFilters() {
+        // Preencher anos
+        if (pixBoletoYear) {
+            const currentYear = new Date().getFullYear();
+            pixBoletoYear.innerHTML = '';
+            for (let i = currentYear; i >= currentYear - 3; i--) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = i;
+                if (i === currentYear) option.selected = true;
+                pixBoletoYear.appendChild(option);
+            }
+        }
+
+        // Event listeners para filtros
+        [pixBoletoType, pixBoletoYear, pixBoletoMonth, pixBoletoSearch].forEach(element => {
+            if (element) {
+                element.addEventListener('change', loadPixBoletoData);
+                if (element === pixBoletoSearch) {
+                    element.addEventListener('input', debounce(loadPixBoletoData, 300));
+                }
+            }
+        });
+    }
+
+    // Função debounce para busca
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
 
     // ========== FIM FUNÇÕES GASTOS RECORRENTES ==========
 });

@@ -70,6 +70,51 @@
         body.dark-mode .bg-gradient-to-br { background: linear-gradient(135deg, #23272b 60%, #181a1b 100%) !important; }
         .theme-toggle-btn { cursor: pointer; transition: color 0.2s; }
         .theme-toggle-btn:hover { color: #f59e42; }
+        
+        /* Tab Styles */
+        .tab-button {
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+        .tab-button.active {
+            border-bottom-color: #3b82f6;
+            background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+        }
+        .tab-button:not(.active):hover {
+            background: #f3f4f6;
+            border-bottom-color: #d1d5db;
+        }
+        .tab-content {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        .tab-content.hidden {
+            display: none;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* PIX/Boleto specific styles */
+        .pix-row { background: rgba(34, 197, 94, 0.05); }
+        .boleto-row { background: rgba(59, 130, 246, 0.05); }
+        .recurring-badge {
+            background: #f59e0b;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        /* Improved card animations */
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -125,10 +170,28 @@
         </header>
 
         <main class="p-4 md:p-8">
-            <!-- Cards com Destaques -->
+            <!-- Navegação por Abas -->
+            <div class="bg-white rounded-lg shadow-md mb-8 overflow-hidden">
+                <nav class="flex space-x-0 border-b">
+                    <button class="tab-button active flex-1 px-6 py-4 text-center font-medium transition-all duration-300 bg-blue-500 text-white" data-tab="dashboard">
+                        <i class="fas fa-tachometer-alt mr-2"></i>📊 Dashboard
+                    </button>
+                    <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="pix-boleto">
+                        <i class="fas fa-mobile-alt mr-2"></i>💳 PIX & Boleto
+                    </button>
+                    <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="expenses">
+                        <i class="fas fa-list mr-2"></i>📝 Gastos
+                    </button>
+                    <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="reports">
+                        <i class="fas fa-chart-bar mr-2"></i>📈 Relatórios
+                    </button>
+                </nav>
+            </div>
 
-          <!--<div class="grid grid-cols-1  gap-6 mb-8"> <iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/6Dc77lBlAiQJDMzKLzadZa?utm_source=generator" width="100%" height="152" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe></div>-->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Aba Dashboard Principal -->
+            <div id="dashboard-tab" class="tab-content">
+                <!-- Cards com Destaques -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div class="bg-gradient-to-br from-blue-500 to-blue-300 p-6 rounded-2xl shadow-lg transform transition duration-500 hover:scale-105 animate-fade-in" data-aos="fade-up" data-aos-delay="100">
                     <div class="flex items-center gap-4">
                         <span class="text-5xl">💸</span>
@@ -174,67 +237,6 @@
                 <canvas id="mixed-type-chart"></canvas>
             </div>
 
-            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">➕ Adicionar Novo Gasto</h3>
-                <form id="add-expense-form" class="space-y-6">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="form-date" class="block text-sm font-medium">Data da Compra</label>
-                            <input type="date" id="form-date" name="transaction_date" class="mt-1 block w-full p-2 border rounded-lg" required>
-                        </div>
-                        <div>
-                            <label for="form-account" class="block text-sm font-medium">Conta</label>
-                            <select id="form-account" name="account" class="mt-1 block w-full p-2 border rounded-lg" required>
-                                <option value="">Selecione uma conta</option>
-                                <option>Nu Bank Ketlyn</option>
-                                <option>Nu Vainer</option>
-                                <option>Ourocard Ketlyn</option>
-                                <option>PicPay Vainer</option>
-                                <option>PIX</option>
-                                <option>Boleto</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="form-amount" class="block text-sm font-medium">Valor da Parcela (R$)</label>
-                            <input type="number" step="0.01" id="form-amount" name="amount" placeholder="50.99" class="mt-1 block w-full p-2 border rounded-lg" required>
-                        </div>
-                        <div>
-                            <label for="form-installments" class="block text-sm font-medium">Nº de Parcelas</label>
-                            <input type="number" id="form-installments" name="total_installments" value="1" min="1" class="mt-1 block w-full p-2 border rounded-lg" required>
-                        </div>
-                        <div class="md:col-span-2">
-                            <label for="form-description" class="block text-sm font-medium">Descrição</label>
-                            <input type="text" id="form-description" name="description" placeholder="Ex: Almoço" class="mt-1 block w-full p-2 border rounded-lg" required>
-                        </div>
-                    </div>
-                    <div class="border-t pt-4">
-                        <div class="flex items-center">
-                            <input type="checkbox" id="form-is-business" name="is_business_expense" class="h-4 w-4">
-                            <label for="form-is-business" class="ml-2 block text-sm font-medium">Marcar como Gasto Empresarial</label>
-                        </div>
-                    </div>
-                    <div class="pl-2 space-y-4">
-                        <div id="personal-fields-container" class="field-container">
-                            <label for="form-plan-code" class="block text-sm font-medium">Plano de Conta Pessoal</label>
-                            <input type="number" id="form-plan-code" name="account_plan_code" placeholder="Código de 1 a 45" class="mt-1 block w-full md:w-1/2 p-2 border rounded-lg">
-                        </div>
-                        <div id="business-fields-container" class="field-container hidden space-y-4">
-                            <div class="flex items-center">
-                                <input type="checkbox" id="form-has-invoice-check" name="has_invoice" class="h-4 w-4">
-                                <label for="form-has-invoice-check" class="ml-2 block text-sm">Tem Nota Fiscal?</label>
-                            </div>
-                            <div>
-                                <label for="form-invoice-file" class="block text-sm font-medium">Upload da Nota</label>
-                                <input type="file" id="form-invoice-file" name="invoice" class="mt-1 block w-full text-sm">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="border-t pt-4 text-right">
-                        <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Adicionar Gasto</button>
-                    </div>
-                </form>
-            </div>
-
             <!-- Seção de Gastos Recorrentes -->
             <div class="bg-white p-6 rounded-lg shadow-md mb-8">
                 <div class="flex justify-between items-center mb-4">
@@ -252,69 +254,72 @@
                 <h3 class="text-xl font-semibold text-gray-700 mb-4">📊 Gastos por Plano de Conta</h3>
                 <canvas id="plan-chart"></canvas>
             </div>
+            </div>
 
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-semibold">🧾 Histórico de Transações</h3>
-                    <div class="flex flex-wrap gap-2 items-center">
-                        <input id="filter-search" type="text" placeholder="Buscar..." class="form-control form-control-sm w-44 me-2" title="Buscar por qualquer campo">
-                        <select id="filter-type" class="border rounded px-2 py-1" title="Filtrar por tipo">
-                            <option value="">Todos os Tipos</option>
-                            <option value="pessoal">Pessoal</option>
-                            <option value="empresa">Empresarial</option>
-                        </select>
-                        <input id="filter-min" type="number" step="0.01" placeholder="Valor mín." class="form-control form-control-sm w-24" title="Valor mínimo">
-                        <input id="filter-max" type="number" step="0.01" placeholder="Valor máx." class="form-control form-control-sm w-24" title="Valor máximo">
-                        <select id="filter-account" class="border rounded px-2 py-1" title="Filtrar por conta">
-                            <option value="">Todas as Contas</option>
-                            <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
-                            <option value="Nu Vainer">Nu Vainer</option>
-                            <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
-                            <option value="PicPay Vainer">PicPay Vainer</option>
-                            <option value="PIX">PIX</option>
-                            <option value="Boleto">Boleto</option>
-                        </select>
-                        <input id="filter-plan" type="text" placeholder="Plano de Conta" class="form-control form-control-sm w-24" title="Filtrar por plano de conta">
-                        <select id="filter-year" class="border rounded px-2 py-1" title="Filtrar por ano"></select>
-                        <select id="filter-month" class="border rounded px-2 py-1" title="Filtrar por mês"></select>
+            <!-- Aba PIX & Boleto -->
+            <div id="pix-boleto-tab" class="tab-content hidden">
+                <!-- Cards de Resumo PIX/Boleto -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-gradient-to-br from-green-500 to-green-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">💸</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">PIX Total</h3>
+                                <p id="pix-total" class="text-2xl font-bold text-white">R$ 0,00</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-blue-500 to-blue-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">🧾</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">Boleto Total</h3>
+                                <p id="boleto-total" class="text-2xl font-bold text-white">R$ 0,00</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-purple-500 to-purple-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">🔢</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">Total Transações</h3>
+                                <p id="pix-boleto-transactions" class="text-2xl font-bold text-white">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-orange-500 to-orange-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">📊</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">Total Geral</h3>
+                                <p id="pix-boleto-grand-total" class="text-2xl font-bold text-white">R$ 0,00</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left min-w-[700px] md:min-w-0">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="p-3">Data</th>
-                                <th class="p-3">Descrição</th>
-                                <th class="p-3">Valor</th>
-                                <th class="p-3">Conta</th>
-                                <th class="p-3">Tipo</th>
-                                <th class="p-3">Plano de Conta</th>
-                                <th class="p-3">Nota</th>
-                                <th class="p-3">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="expenses-table-body"></tbody>
-                    </table>
-                </div>
-            </div>
 
-            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">🎯 Teto de Gastos por Plano de Conta</h3>
-                <canvas id="goals-plan-chart"></canvas>
-            </div>
-
-            <!-- Novo Quadro de Busca por Data de Fatura -->
-            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">🔍 Busca por Data de Fatura</h3>
-                <p class="text-sm text-gray-600 mb-4">
-                    <strong>Nota:</strong> PIX e Boleto não possuem períodos de fatura específicos. Use os filtros normais para esses tipos de conta.
-                </p>
-                <form id="billing-period-form" class="space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="md:col-span-2">
-                            <label for="billing-month" class="block text-sm font-medium">Mês de Referência</label>
-                            <select id="billing-month" name="billing_month" class="mt-1 block w-full p-2 border rounded-lg" required>
-                                <option value="">Selecione o mês</option>
+                <!-- Seção de Filtros Específicos PIX/Boleto -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">🔍 Filtros PIX & Boleto</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium">Tipo</label>
+                            <select id="pix-boleto-type" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todos</option>
+                                <option value="PIX">PIX</option>
+                                <option value="Boleto">Boleto</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Ano</label>
+                            <select id="pix-boleto-year" class="mt-1 block w-full p-2 border rounded-lg">
+                                <!-- Preenchido via JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Mês</label>
+                            <select id="pix-boleto-month" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todos</option>
                                 <option value="1">Janeiro</option>
                                 <option value="2">Fevereiro</option>
                                 <option value="3">Março</option>
@@ -329,14 +334,244 @@
                                 <option value="12">Dezembro</option>
                             </select>
                         </div>
+                        <div>
+                            <label class="block text-sm font-medium">Buscar</label>
+                            <input type="text" id="pix-boleto-search" placeholder="Descrição..." class="mt-1 block w-full p-2 border rounded-lg">
+                        </div>
                     </div>
-                    <div class="text-right">
-                        <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Buscar</button>
+                </div>
+
+                <!-- Gráficos PIX/Boleto -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📊 PIX vs Boleto</h3>
+                        <canvas id="pix-boleto-comparison-chart"></canvas>
                     </div>
-                </form>
-                <div id="billing-results" class="mt-6">
-                    <!-- Resultados serão exibidos aqui -->
-                    <!-- Adicione aqui a renderização das três contas ao mesmo tempo, via JS -->
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📈 Evolução Mensal</h3>
+                        <canvas id="pix-boleto-evolution-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Detalhamento PIX -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">💸 Detalhamento PIX</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-green-50">
+                                <tr>
+                                    <th class="p-3 text-green-700">Data</th>
+                                    <th class="p-3 text-green-700">Descrição</th>
+                                    <th class="p-3 text-green-700">Valor</th>
+                                    <th class="p-3 text-green-700">Tipo</th>
+                                    <th class="p-3 text-green-700">Plano</th>
+                                    <th class="p-3 text-green-700">Recorrente</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pix-details-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Detalhamento Boleto -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">🧾 Detalhamento Boleto</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-blue-50">
+                                <tr>
+                                    <th class="p-3 text-blue-700">Data</th>
+                                    <th class="p-3 text-blue-700">Descrição</th>
+                                    <th class="p-3 text-blue-700">Valor</th>
+                                    <th class="p-3 text-blue-700">Tipo</th>
+                                    <th class="p-3 text-blue-700">Plano</th>
+                                    <th class="p-3 text-blue-700">Recorrente</th>
+                                </tr>
+                            </thead>
+                            <tbody id="boleto-details-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Resumo por Categoria -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">📋 Resumo por Categoria</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="font-semibold text-green-600 mb-3">💸 PIX por Plano de Conta</h4>
+                            <div id="pix-category-summary" class="space-y-2"></div>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-blue-600 mb-3">🧾 Boleto por Plano de Conta</h4>
+                            <div id="boleto-category-summary" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aba Gastos -->
+            <div id="expenses-tab" class="tab-content hidden">
+                <!-- Formulário de Adição de Gastos -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">➕ Adicionar Novo Gasto</h3>
+                    <form id="add-expense-form" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="form-date" class="block text-sm font-medium">Data da Compra</label>
+                                <input type="date" id="form-date" name="transaction_date" class="mt-1 block w-full p-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="form-account" class="block text-sm font-medium">Conta</label>
+                                <select id="form-account" name="account" class="mt-1 block w-full p-2 border rounded-lg" required>
+                                    <option value="">Selecione uma conta</option>
+                                    <option>Nu Bank Ketlyn</option>
+                                    <option>Nu Vainer</option>
+                                    <option>Ourocard Ketlyn</option>
+                                    <option>PicPay Vainer</option>
+                                    <option>PIX</option>
+                                    <option>Boleto</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="form-amount" class="block text-sm font-medium">Valor da Parcela (R$)</label>
+                                <input type="number" step="0.01" id="form-amount" name="amount" placeholder="50.99" class="mt-1 block w-full p-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="form-installments" class="block text-sm font-medium">Total de Parcelas</label>
+                                <input type="number" id="form-installments" name="total_installments" value="1" min="1" max="48" class="mt-1 block w-full p-2 border rounded-lg" required>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label for="form-description" class="block text-sm font-medium">Descrição</label>
+                                <input type="text" id="form-description" name="description" placeholder="Ex: Almoço no restaurante" class="mt-1 block w-full p-2 border rounded-lg" required>
+                            </div>
+                        </div>
+                        <div class="border-t pt-4">
+                            <div class="flex items-center">
+                                <input type="checkbox" id="form-is-business" name="is_business_expense" class="h-4 w-4">
+                                <label for="form-is-business" class="ml-2 block text-sm font-medium">Marcar como Gasto Empresarial</label>
+                            </div>
+                        </div>
+                        <div class="pl-2 space-y-4">
+                            <div id="personal-fields-container" class="field-container">
+                                <label for="form-plan-code" class="block text-sm font-medium">Plano de Conta Pessoal</label>
+                                <input type="number" id="form-plan-code" name="account_plan_code" placeholder="Código de 1 a 45" class="mt-1 block w-full md:w-1/2 p-2 border rounded-lg">
+                            </div>
+                            <div id="business-fields-container" class="field-container hidden space-y-4">
+                                <div class="flex items-center">
+                                    <input type="checkbox" id="form-has-invoice-check" name="has_invoice" class="h-4 w-4">
+                                    <label for="form-has-invoice-check" class="ml-2 block text-sm">Tem Nota Fiscal?</label>
+                                </div>
+                                <div>
+                                    <label for="form-invoice-file" class="block text-sm font-medium">Upload da Nota</label>
+                                    <input type="file" id="form-invoice-file" name="invoice" class="mt-1 block w-full text-sm">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="border-t pt-4 text-right">
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors">
+                                <i class="fas fa-plus mr-2"></i>Adicionar Gasto
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Lista de Gastos -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">📝 Histórico de Gastos</h3>
+                    <!-- Filtros simplificados -->
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                        <div>
+                            <label class="block text-sm font-medium">Ano</label>
+                            <select id="filter-year" class="mt-1 block w-full p-2 border rounded-lg"></select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Mês</label>
+                            <select id="filter-month" class="mt-1 block w-full p-2 border rounded-lg"></select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Conta</label>
+                            <select id="filter-account" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Tipo</label>
+                            <select id="filter-type" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todos</option>
+                                <option value="personal">Pessoal</option>
+                                <option value="business">Empresarial</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Buscar</label>
+                            <input type="text" id="filter-search" placeholder="Descrição..." class="mt-1 block w-full p-2 border rounded-lg">
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left min-w-[700px] md:min-w-0">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="p-3">Data</th>
+                                    <th class="p-3">Descrição</th>
+                                    <th class="p-3">Valor</th>
+                                    <th class="p-3">Conta</th>
+                                    <th class="p-3">Tipo</th>
+                                    <th class="p-3">Plano de Conta</th>
+                                    <th class="p-3">Nota</th>
+                                    <th class="p-3">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expenses-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aba Relatórios -->
+            <div id="reports-tab" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">🎯 Teto de Gastos</h3>
+                        <canvas id="goals-plan-chart"></canvas>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📊 Gastos por Plano</h3>
+                        <canvas id="plan-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Novo Quadro de Busca por Data de Fatura -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">🔍 Busca por Data de Fatura</h3>
+                    <p class="text-sm text-gray-600 mb-4">
+                        <strong>Nota:</strong> PIX e Boleto não possuem períodos de fatura específicos.
+                    </p>
+                    <form id="billing-period-form" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="md:col-span-2">
+                                <label for="billing-month" class="block text-sm font-medium">Mês de Referência</label>
+                                <select id="billing-month" name="billing_month" class="mt-1 block w-full p-2 border rounded-lg" required>
+                                    <option value="">Selecione o mês</option>
+                                    <option value="1">Janeiro</option>
+                                    <option value="2">Fevereiro</option>
+                                    <option value="3">Março</option>
+                                    <option value="4">Abril</option>
+                                    <option value="5">Maio</option>
+                                    <option value="6">Junho</option>
+                                    <option value="7">Julho</option>
+                                    <option value="8">Agosto</option>
+                                    <option value="9">Setembro</option>
+                                    <option value="10">Outubro</option>
+                                    <option value="11">Novembro</option>
+                                    <option value="12">Dezembro</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Buscar</button>
+                        </div>
+                    </form>
+                    <div id="billing-results" class="mt-6"></div>
                 </div>
             </div>
         </main>
