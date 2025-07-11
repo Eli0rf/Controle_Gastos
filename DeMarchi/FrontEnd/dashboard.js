@@ -48,36 +48,116 @@ document.addEventListener('DOMContentLoaded', function() {
     const irDetails = document.getElementById('ir-details');
 
     // ========== GASTOS RECORRENTES ==========
-    const recurringExpensesBtn = document.getElementById('recurring-expenses-btn');
+    const recurringBtn = document.getElementById('recurring-expenses-btn');
     const recurringModal = document.getElementById('recurring-modal');
     const closeRecurringModalBtn = document.getElementById('close-recurring-modal');
     const recurringForm = document.getElementById('recurring-form');
     const recurringList = document.getElementById('recurring-list');
     const processRecurringBtn = document.getElementById('process-recurring-btn');
 
-    // ========== SISTEMA DE ABAS ==========
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
+    // ========== ANÁLISE EMPRESARIAL ==========
+    const businessAnalysisTab = document.getElementById('business-analysis-tab');
+    const businessPeriodSelect = document.getElementById('business-period');
+    const customDateFields = document.getElementById('custom-date-fields');
+    const businessDateFrom = document.getElementById('business-date-from');
+    const businessDateTo = document.getElementById('business-date-to');
+    const businessAccountSelect = document.getElementById('business-account');
+    const businessInvoiceFilter = document.getElementById('business-invoice-filter');
+    const businessSearchInput = document.getElementById('business-search');
+    const billingYearSelect = document.getElementById('billing-year');
+    const billingMonthSelect = document.getElementById('billing-month');
+    const filterBillingBtn = document.getElementById('filter-billing-btn');
+    const billingSummary = document.getElementById('billing-summary');
+    const businessExpensesTable = document.getElementById('business-expenses-table');
+    const exportBusinessCsvBtn = document.getElementById('export-business-csv');
+    const exportBusinessPdfBtn = document.getElementById('export-business-pdf');
+    const businessAlertsContainer = document.getElementById('business-alerts');
 
-    // ========== PIX & BOLETO ==========
-    const pixTotal = document.getElementById('pix-total');
-    const boletoTotal = document.getElementById('boleto-total');
-    const pixBoletoTransactions = document.getElementById('pix-boleto-transactions');
-    const pixBoletoGrandTotal = document.getElementById('pix-boleto-grand-total');
+    // ========== PIX & BOLETO ELEMENTS ==========
     const pixBoletoType = document.getElementById('pix-boleto-type');
     const pixBoletoYear = document.getElementById('pix-boleto-year');
     const pixBoletoMonth = document.getElementById('pix-boleto-month');
     const pixBoletoSearch = document.getElementById('pix-boleto-search');
+    const pixTotal = document.getElementById('pix-total');
+    const boletoTotal = document.getElementById('boleto-total');
+    const pixBoletoTransactions = document.getElementById('pix-boleto-transactions');
+    const pixBoletoGrandTotal = document.getElementById('pix-boleto-grand-total');
     const pixDetailsTable = document.getElementById('pix-details-table');
     const boletoDetailsTable = document.getElementById('boleto-details-table');
     const pixCategorySummary = document.getElementById('pix-category-summary');
     const boletoCategorySummary = document.getElementById('boleto-category-summary');
 
+    // ========== VARIÁVEIS GLOBAIS ==========
     let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
+    let businessCharts = {}; // Objeto para armazenar gráficos empresariais
     let allExpensesCache = [];
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
 
     function getToken() {
         return localStorage.getItem('token');
+    }
+
+    // ========== FUNÇÕES AUXILIARES ==========
+    function formatCurrency(value) {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        }).format(value);
+    }
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('pt-BR');
+    }
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('pt-BR');
+    }
+
+    function showToast(message, type = 'info') {
+        const toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) return;
+
+        const toast = document.createElement('div');
+        toast.className = `p-4 rounded-lg shadow-lg text-white max-w-sm transform transition-all duration-300 translate-x-full opacity-0`;
+        
+        switch (type) {
+            case 'success':
+                toast.classList.add('bg-green-500');
+                break;
+            case 'error':
+                toast.classList.add('bg-red-500');
+                break;
+            case 'warning':
+                toast.classList.add('bg-yellow-500');
+                break;
+            default:
+                toast.classList.add('bg-blue-500');
+        }
+
+        toast.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+
+        toastContainer.appendChild(toast);
+
+        // Animar entrada
+        setTimeout(() => {
+            toast.classList.remove('translate-x-full', 'opacity-0');
+        }, 100);
+
+        // Auto-remover após 5 segundos
+        setTimeout(() => {
+            toast.classList.add('translate-x-full', 'opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
     }
 
     function addEventListeners() {
@@ -109,10 +189,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Event listeners para gastos recorrentes
-        if (recurringExpensesBtn) recurringExpensesBtn.addEventListener('click', openRecurringModal);
+        if (recurringBtn) recurringBtn.addEventListener('click', openRecurringModal);
         if (closeRecurringModalBtn) closeRecurringModalBtn.addEventListener('click', closeRecurringModal);
         if (recurringForm) recurringForm.addEventListener('submit', handleRecurringExpenseSubmit);
         if (processRecurringBtn) processRecurringBtn.addEventListener('click', processRecurringExpenses);
+
+        // Event listeners para PIX/Boleto
+        if (pixBoletoType) pixBoletoType.addEventListener('change', loadPixBoletoData);
+        if (pixBoletoYear) pixBoletoYear.addEventListener('change', loadPixBoletoData);
+        if (pixBoletoMonth) pixBoletoMonth.addEventListener('change', loadPixBoletoData);
+        if (pixBoletoSearch) pixBoletoSearch.addEventListener('input', loadPixBoletoData);
     }
 
     async function handleLogin(e) {
@@ -162,6 +248,7 @@ document.addEventListener('DOMContentLoaded', function() {
         toggleExpenseFields();
         initializeTabs();
         initializePixBoletoFilters();
+        initBusinessAnalysis();
     }
 
     function populateFilterOptions() {
@@ -509,7 +596,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.innerHTML = `
                     <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</td>
                     <td class="p-3">${expense.description}</td>
-                    <td class="p-3 text-red-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
+                    <td class="p-3 text-red-600">${formatCurrency(parseFloat(expense.amount))}</td>
                     <td class="p-3">${expense.account}</td>
                     <td class="p-3">${expense.is_business_expense ? 'Empresa' : 'Pessoal'}</td>
                     <td class="p-3">${planCode}</td>
@@ -524,7 +611,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             expensesTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-4">Nenhuma despesa encontrada.</td></tr>`;
         }
-        if (totalSpentEl) totalSpentEl.textContent = `R$ ${totalSpent.toFixed(2)}`;
+        if (totalSpentEl) totalSpentEl.textContent = formatCurrency(totalSpent);
         if (totalTransactionsEl) totalTransactionsEl.textContent = expenses.length;
     }
 
@@ -1573,6 +1660,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Load specific data for tab
             if (tabId === 'pix-boleto') {
                 loadPixBoletoData();
+            } else if (tabId === 'business-analysis') {
+                loadBusinessAnalysis();
             }
         }
     }
@@ -1630,10 +1719,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalTransactions = pixData.length + boletoData.length;
         const grandTotal = pixTotalValue + boletoTotalValue;
 
-        if (pixTotal) pixTotal.textContent = `R$ ${pixTotalValue.toFixed(2)}`;
-        if (boletoTotal) boletoTotal.textContent = `R$ ${boletoTotalValue.toFixed(2)}`;
+        if (pixTotal) pixTotal.textContent = formatCurrency(pixTotalValue);
+        if (boletoTotal) boletoTotal.textContent = formatCurrency(boletoTotalValue);
         if (pixBoletoTransactions) pixBoletoTransactions.textContent = totalTransactions;
-        if (pixBoletoGrandTotal) pixBoletoGrandTotal.textContent = `R$ ${grandTotal.toFixed(2)}`;
+        if (pixBoletoGrandTotal) pixBoletoGrandTotal.textContent = formatCurrency(grandTotal);
     }
 
     function updatePixBoletoTables(pixData, boletoData) {
@@ -1646,7 +1735,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.innerHTML = `
                     <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
                     <td class="p-3">${expense.description}</td>
-                    <td class="p-3 font-semibold text-green-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
+                    <td class="p-3 font-semibold text-green-600">${formatCurrency(parseFloat(expense.amount))}</td>
                     <td class="p-3">${expense.is_business_expense ? 'Empresarial' : 'Pessoal'}</td>
                     <td class="p-3">${expense.account_plan_code || '-'}</td>
                     <td class="p-3">${expense.is_recurring_expense ? '<span class="recurring-badge">Recorrente</span>' : '-'}</td>
@@ -1824,4 +1913,1077 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ========== FIM FUNÇÕES GASTOS RECORRENTES ==========
+
+    // ========== FUNÇÕES ANÁLISE EMPRESARIAL ==========
+
+    // Inicializar análise empresarial
+    function initBusinessAnalysis() {
+        console.log('Inicializando análise empresarial...');
+        populateBusinessFilters();
+        setupBusinessEventListeners();
+        loadBusinessAnalysis();
+    }
+
+    // Popular filtros empresariais
+    function populateBusinessFilters() {
+        // Popular anos
+        const currentYear = new Date().getFullYear();
+        for (let year = currentYear; year >= currentYear - 5; year--) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            if (year === currentYear) option.selected = true;
+            billingYearSelect.appendChild(option);
+        }
+
+        // Popular contas empresariais
+        const businessAccounts = ['Nu Bank Ketlyn', 'Nu Vainer', 'Ourocard Ketlyn', 'PicPay Vainer', 'PIX', 'Boleto'];
+        businessAccounts.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account;
+            option.textContent = account;
+            businessAccountSelect.appendChild(option);
+        });
+
+        // Definir datas padrão
+        const today = new Date();
+        businessDateTo.value = today.toISOString().split('T')[0];
+        
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        businessDateFrom.value = firstDay.toISOString().split('T')[0];
+    }
+
+    // Configurar event listeners empresariais
+    function setupBusinessEventListeners() {
+        // Filtro de período personalizado
+        businessPeriodSelect.addEventListener('change', function() {
+            if (this.value === 'custom') {
+                customDateFields.classList.remove('hidden');
+            } else {
+                customDateFields.classList.add('hidden');
+                updateBusinessDateRange();
+            }
+            loadBusinessAnalysis();
+        });
+
+        // Outros filtros
+        [businessAccountSelect, businessInvoiceFilter, billingYearSelect, billingMonthSelect].forEach(el => {
+            if (el) el.addEventListener('change', loadBusinessAnalysis);
+        });
+
+        // Busca com debounce
+        if (businessSearchInput) {
+            businessSearchInput.addEventListener('input', debounce(loadBusinessAnalysis, 300));
+        }
+
+        // Filtrar por período de fatura
+        if (filterBillingBtn) {
+            filterBillingBtn.addEventListener('click', loadBillingPeriodAnalysis);
+        }
+
+        // Botões de exportação
+        if (exportBusinessCsvBtn) {
+            exportBusinessCsvBtn.addEventListener('click', exportBusinessDataToCsv);
+        }
+        if (exportBusinessPdfBtn) {
+            exportBusinessPdfBtn.addEventListener('click', exportBusinessDataToPdf);
+        }
+    }
+
+    // Atualizar range de datas baseado no período selecionado
+    function updateBusinessDateRange() {
+        const today = new Date();
+        const period = businessPeriodSelect.value;
+        
+        switch (period) {
+            case 'current-month':
+                businessDateFrom.value = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+                businessDateTo.value = today.toISOString().split('T')[0];
+                break;
+            case 'last-month':
+                const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+                businessDateFrom.value = lastMonth.toISOString().split('T')[0];
+                businessDateTo.value = lastMonthEnd.toISOString().split('T')[0];
+                break;
+            case 'quarter':
+                const quarterStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+                businessDateFrom.value = quarterStart.toISOString().split('T')[0];
+                businessDateTo.value = today.toISOString().split('T')[0];
+                break;
+            case 'year':
+                businessDateFrom.value = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+                businessDateTo.value = today.toISOString().split('T')[0];
+                break;
+        }
+    }
+
+    // Carregar análise empresarial
+    async function loadBusinessAnalysis() {
+        try {
+            // Destruir gráficos existentes antes de criar novos
+            destroyBusinessCharts();
+            
+            const businessExpenses = await fetchBusinessExpenses();
+            updateBusinessMetrics(businessExpenses);
+            renderBusinessCharts(businessExpenses);
+            populateBusinessTable(businessExpenses);
+            generateBusinessAlerts(businessExpenses);
+        } catch (error) {
+            console.error('Erro ao carregar análise empresarial:', error);
+            showToast('Erro ao carregar dados empresariais', 'error');
+        }
+    }
+
+    // Buscar gastos empresariais
+    async function fetchBusinessExpenses() {
+        const token = getToken();
+        if (!token) return [];
+
+        const params = new URLSearchParams({
+            is_business: 'true'
+        });
+
+        // Adicionar filtros de data
+        if (businessPeriodSelect.value !== 'custom') {
+            updateBusinessDateRange();
+        }
+        
+        if (businessDateFrom.value) params.append('date_from', businessDateFrom.value);
+        if (businessDateTo.value) params.append('date_to', businessDateTo.value);
+        if (businessAccountSelect.value) params.append('account', businessAccountSelect.value);
+        if (businessSearchInput.value) params.append('search', businessSearchInput.value);
+        if (businessInvoiceFilter.value) {
+            if (businessInvoiceFilter.value === 'with') {
+                params.append('has_invoice', '1');
+            } else if (businessInvoiceFilter.value === 'without') {
+                params.append('has_invoice', '0');
+            }
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/expenses?${params}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!response.ok) throw new Error('Erro ao buscar gastos empresariais');
+        const data = await response.json();
+        
+        // Filtrar apenas gastos empresariais no frontend como backup
+        return data.filter(expense => expense.is_business_expense);
+    }
+
+    // Atualizar métricas empresariais
+    function updateBusinessMetrics(expenses) {
+        const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        const withInvoice = expenses.filter(exp => exp.has_invoice).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        const withoutInvoice = total - withInvoice;
+
+        document.getElementById('business-total').textContent = formatCurrency(total);
+        document.getElementById('business-invoiced').textContent = formatCurrency(withInvoice);
+        document.getElementById('business-non-invoiced').textContent = formatCurrency(withoutInvoice);
+
+        // Calcular crescimento mensal (comparação com mês anterior)
+        calculateMonthlyGrowth(expenses);
+
+        // Atualizar estatísticas da tabela filtrada
+        updateFilteredStatistics(expenses);
+    }
+
+    // Calcular crescimento mensal
+    async function calculateMonthlyGrowth(currentExpenses) {
+        try {
+            const currentTotal = currentExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+            
+            // Buscar dados do mês anterior
+            const today = new Date();
+            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+            
+            const params = new URLSearchParams({
+                is_business: 'true',
+                start_date: lastMonth.toISOString().split('T')[0],
+                end_date: lastMonthEnd.toISOString().split('T')[0]
+            });
+
+            const response = await fetch(`${API_BASE_URL}/api/expenses?${params}`, {
+                headers: { Authorization: `Bearer ${getToken()}` }
+            });
+
+            if (response.ok) {
+                const lastMonthData = await response.json();
+                const lastMonthExpenses = lastMonthData.filter(expense => expense.is_business_expense);
+                const lastMonthTotal = lastMonthExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+                
+                const growth = lastMonthTotal > 0 ? ((currentTotal - lastMonthTotal) / lastMonthTotal) * 100 : 0;
+                const growthEl = document.getElementById('business-growth');
+                
+                if (growth > 0) {
+                    growthEl.textContent = `+${growth.toFixed(1)}%`;
+                    growthEl.className = 'text-xl font-bold text-red-300';
+                } else if (growth < 0) {
+                    growthEl.textContent = `${growth.toFixed(1)}%`;
+                    growthEl.className = 'text-xl font-bold text-green-300';
+                } else {
+                    growthEl.textContent = '0%';
+                    growthEl.className = 'text-xl font-bold text-white';
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao calcular crescimento:', error);
+            document.getElementById('business-growth').textContent = 'N/A';
+        }
+    }
+
+    // Atualizar estatísticas filtradas
+    function updateFilteredStatistics(expenses) {
+        const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        const count = expenses.length;
+        const average = count > 0 ? total / count : 0;
+        const withInvoiceCount = expenses.filter(exp => exp.has_invoice).length;
+        const invoicePercentage = count > 0 ? (withInvoiceCount / count) * 100 : 0;
+
+        document.getElementById('filtered-total').textContent = formatCurrency(total);
+        document.getElementById('filtered-count').textContent = count;
+        document.getElementById('filtered-average').textContent = formatCurrency(average);
+        document.getElementById('filtered-invoice-percentage').textContent = `${invoicePercentage.toFixed(1)}%`;
+    }
+
+    // Renderizar gráficos empresariais
+    function renderBusinessCharts(expenses) {
+        renderBusinessEvolutionChart(expenses);
+        renderBusinessAccountChart(expenses);
+        renderBusinessCategoryChart(expenses);
+        renderBusinessInvoiceStatusChart(expenses);
+        renderQuarterlyComparisonChart(expenses);
+        renderExpenseProjectionChart(expenses);
+    }
+
+    // Destruir gráficos empresariais existentes
+    function destroyBusinessCharts() {
+        Object.keys(businessCharts).forEach(chartKey => {
+            if (businessCharts[chartKey]) {
+                businessCharts[chartKey].destroy();
+                businessCharts[chartKey] = null;
+            }
+        });
+    }
+
+    // Gráfico de evolução mensal
+    function renderBusinessEvolutionChart(expenses) {
+        const ctx = document.getElementById('business-evolution-chart');
+        if (!ctx) return;
+
+        // Destruir gráfico específico se existir
+        if (businessCharts.evolution) {
+            businessCharts.evolution.destroy();
+            businessCharts.evolution = null;
+        }
+
+        // Agrupar por mês
+        const monthlyData = {};
+        expenses.forEach(expense => {
+            const date = new Date(expense.transaction_date);
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            monthlyData[monthKey] = (monthlyData[monthKey] || 0) + parseFloat(expense.amount);
+        });
+
+        const labels = Object.keys(monthlyData).sort();
+        const data = labels.map(label => monthlyData[label]);
+
+        businessCharts.evolution = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels.map(label => {
+                    const [year, month] = label.split('-');
+                    return new Date(year, month - 1).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+                }),
+                datasets: [{
+                    label: 'Gastos Empresariais',
+                    data: data,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return formatCurrency(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Gráfico de distribuição por conta
+    function renderBusinessAccountChart(expenses) {
+        const ctx = document.getElementById('business-account-chart');
+        if (!ctx) return;
+
+        // Destruir gráfico específico se existir
+        if (businessCharts.account) {
+            businessCharts.account.destroy();
+            businessCharts.account = null;
+        }
+
+        const accountData = {};
+        expenses.forEach(expense => {
+            accountData[expense.account] = (accountData[expense.account] || 0) + parseFloat(expense.amount);
+        });
+
+        businessCharts.account = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(accountData),
+                datasets: [{
+                    data: Object.values(accountData),
+                    backgroundColor: [
+                        '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    // Gráfico de gastos por categoria
+    function renderBusinessCategoryChart(expenses) {
+        const ctx = document.getElementById('business-category-chart');
+        if (!ctx) return;
+
+        // Destruir gráfico específico se existir
+        if (businessCharts.category) {
+            businessCharts.category.destroy();
+            businessCharts.category = null;
+        }
+
+        const categoryData = {};
+        expenses.forEach(expense => {
+            const category = expense.account_plan_code || 'Sem Categoria';
+            categoryData[category] = (categoryData[category] || 0) + parseFloat(expense.amount);
+        });
+
+        businessCharts.category = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(categoryData),
+                datasets: [{
+                    label: 'Valor',
+                    data: Object.values(categoryData),
+                    backgroundColor: '#3b82f6'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return formatCurrency(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Gráfico de status de nota fiscal
+    function renderBusinessInvoiceStatusChart(expenses) {
+        const ctx = document.getElementById('business-invoice-status-chart');
+        if (!ctx) return;
+
+        const withInvoice = expenses.filter(exp => exp.has_invoice === 1 || exp.has_invoice === true).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        const withoutInvoice = expenses.filter(exp => exp.has_invoice !== 1 && exp.has_invoice !== true).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+
+        businessCharts.invoice = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['Com Nota Fiscal', 'Sem Nota Fiscal'],
+                datasets: [{
+                    data: [withInvoice, withoutInvoice],
+                    backgroundColor: ['#10b981', '#ef4444']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    // Gráfico de comparação trimestral
+    async function renderQuarterlyComparisonChart(expenses) {
+        const ctx = document.getElementById('quarterly-comparison-chart');
+        if (!ctx) return;
+
+        try {
+            // Buscar dados dos últimos 12 meses para análise trimestral
+            const today = new Date();
+            const twelveMonthsAgo = new Date(today.getFullYear() - 1, today.getMonth(), 1);
+            
+            const params = new URLSearchParams({
+                is_business: 'true',
+                start_date: twelveMonthsAgo.toISOString().split('T')[0],
+                end_date: today.toISOString().split('T')[0]
+            });
+
+            const response = await fetch(`${API_BASE_URL}/api/expenses?${params}`, {
+                headers: { Authorization: `Bearer ${getToken()}` }
+            });
+
+            if (response.ok) {
+                const historicalData = await response.json();
+                const businessData = historicalData.filter(expense => expense.is_business_expense);
+                
+                // Agrupar por trimestre
+                const quarterlyData = {};
+                businessData.forEach(expense => {
+                    const date = new Date(expense.transaction_date);
+                    const quarter = Math.floor(date.getMonth() / 3) + 1;
+                    const quarterKey = `${date.getFullYear()}-Q${quarter}`;
+                    quarterlyData[quarterKey] = (quarterlyData[quarterKey] || 0) + parseFloat(expense.amount);
+                });
+
+                const labels = Object.keys(quarterlyData).sort();
+                const data = labels.map(label => quarterlyData[label]);
+
+                businessCharts.quarterly = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Gastos Trimestrais',
+                            data: data,
+                            backgroundColor: '#8b5cf6'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return formatCurrency(value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao carregar dados trimestrais:', error);
+            // Fallback com dados atuais
+            const quarterlyData = {};
+            expenses.forEach(expense => {
+                const date = new Date(expense.transaction_date);
+                const quarter = Math.floor(date.getMonth() / 3) + 1;
+                const quarterKey = `${date.getFullYear()}-Q${quarter}`;
+                quarterlyData[quarterKey] = (quarterlyData[quarterKey] || 0) + parseFloat(expense.amount);
+            });
+
+            const labels = Object.keys(quarterlyData).sort();
+            const data = labels.map(label => quarterlyData[label]);
+
+            businessCharts.quarterly = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Gastos Trimestrais',
+                        data: data,
+                        backgroundColor: '#8b5cf6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Gráfico de projeção de gastos
+    async function renderExpenseProjectionChart(expenses) {
+        const ctx = document.getElementById('expense-projection-chart');
+        if (!ctx) return;
+
+        try {
+            // Buscar dados dos últimos 6 meses para calcular projeção mais precisa
+            const today = new Date();
+            const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+            
+            const params = new URLSearchParams({
+                is_business: 'true',
+                start_date: sixMonthsAgo.toISOString().split('T')[0],
+                end_date: today.toISOString().split('T')[0]
+            });
+
+            const response = await fetch(`${API_BASE_URL}/api/expenses?${params}`, {
+                headers: { Authorization: `Bearer ${getToken()}` }
+            });
+
+            if (response.ok) {
+                const historicalData = await response.json();
+                const businessData = historicalData.filter(expense => expense.is_business_expense);
+                
+                // Calcular média mensal dos últimos 6 meses
+                const monthlyTotals = {};
+                businessData.forEach(expense => {
+                    const date = new Date(expense.transaction_date);
+                    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    monthlyTotals[monthKey] = (monthlyTotals[monthKey] || 0) + parseFloat(expense.amount);
+                });
+
+                const values = Object.values(monthlyTotals);
+                const average = values.length > 0 ? values.reduce((sum, val) => sum + val, 0) / values.length : 0;
+
+                // Projetar próximos 3 meses
+                const projectionLabels = [];
+                const projectionData = [];
+
+                for (let i = 1; i <= 3; i++) {
+                    const futureDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
+                    projectionLabels.push(futureDate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }));
+                    // Aplicar pequena variação baseada na tendência
+                    const variation = i * 0.02; // 2% de crescimento por mês
+                    projectionData.push(average * (1 + variation));
+                }
+
+                businessCharts.projection = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: projectionLabels,
+                        datasets: [{
+                            label: 'Projeção Baseada em Histórico',
+                            data: projectionData,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            borderDash: [5, 5],
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return formatCurrency(value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Erro ao carregar dados para projeção:', error);
+            // Fallback com dados atuais
+            const monthlyTotals = {};
+            expenses.forEach(expense => {
+                const date = new Date(expense.transaction_date);
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                monthlyTotals[monthKey] = (monthlyTotals[monthKey] || 0) + parseFloat(expense.amount);
+            });
+
+            const values = Object.values(monthlyTotals);
+            const average = values.length > 0 ? values.reduce((sum, val) => sum + val, 0) / values.length : 0;
+
+            const projectionLabels = [];
+            const projectionData = [];
+
+            for (let i = 1; i <= 3; i++) {
+                const futureDate = new Date().setMonth(new Date().getMonth() + i);
+                projectionLabels.push(new Date(futureDate).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }));
+                projectionData.push(average);
+            }
+
+            businessCharts.projectionFallback = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: projectionLabels,
+                    datasets: [{
+                        label: 'Projeção',
+                        data: projectionData,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        borderDash: [5, 5],
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Popular tabela de gastos empresariais
+    function populateBusinessTable(expenses) {
+        if (!businessExpensesTable) return;
+
+        businessExpensesTable.innerHTML = '';
+
+        if (expenses.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="8" class="p-6 text-center text-gray-500">Nenhum gasto empresarial encontrado</td>';
+            businessExpensesTable.appendChild(row);
+            return;
+        }
+
+        expenses.forEach(expense => {
+            const row = document.createElement('tr');
+            row.className = 'business-table-row border-b hover:bg-gray-50';
+            
+            const billingPeriod = calculateBillingPeriod(expense.transaction_date, expense.account);
+            
+            // Verificar se tem nota fiscal
+            const hasInvoice = expense.has_invoice === 1 || expense.has_invoice === true;
+            const invoiceFile = expense.invoice_path || expense.invoice_file;
+            
+            row.innerHTML = `
+                <td class="p-3">${formatDate(expense.transaction_date)}</td>
+                <td class="p-3 max-w-xs truncate" title="${expense.description}">${expense.description}</td>
+                <td class="p-3 font-semibold text-blue-600">${formatCurrency(expense.amount)}</td>
+                <td class="p-3">
+                    <span class="px-2 py-1 bg-gray-100 rounded text-sm">${expense.account}</span>
+                </td>
+                <td class="p-3">${expense.account_plan_code || 'N/A'}</td>
+                <td class="p-3">
+                    <span class="${hasInvoice ? 'invoice-status-yes' : 'invoice-status-no'}">
+                        ${hasInvoice ? '✅ Sim' : '❌ Não'}
+                    </span>
+                </td>
+                <td class="p-3">
+                    <span class="billing-period-badge">${billingPeriod}</span>
+                </td>
+                <td class="p-3">
+                    <div class="flex gap-2">
+                        <button onclick="editExpense(${expense.id})" class="text-blue-600 hover:text-blue-800 p-1 rounded" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        ${invoiceFile ? 
+                            `<a href="${FILE_BASE_URL}/uploads/${invoiceFile}" target="_blank" 
+                               class="text-green-600 hover:text-green-800 p-1 rounded" title="Ver Nota Fiscal">
+                               <i class="fas fa-file-invoice"></i>
+                             </a>` : 
+                            `<span class="text-gray-400 p-1" title="Sem nota fiscal">
+                               <i class="fas fa-file-invoice"></i>
+                             </span>`
+                        }
+                        ${expense.total_installments > 1 ? 
+                            `<span class="text-purple-600 p-1" title="Parcelado ${expense.installment_number}/${expense.total_installments}">
+                               <i class="fas fa-credit-card"></i>
+                             </span>` : ''
+                        }
+                        ${expense.is_recurring_expense ? 
+                            `<span class="text-orange-600 p-1" title="Gasto Recorrente">
+                               <i class="fas fa-sync-alt"></i>
+                             </span>` : ''
+                        }
+                    </div>
+                </td>
+            `;
+            
+            businessExpensesTable.appendChild(row);
+        });
+    }
+
+    // Calcular período de fatura
+    function calculateBillingPeriod(transactionDate, account) {
+        const date = new Date(transactionDate);
+        
+        // Definir períodos de fatura por conta
+        const billingPeriods = {
+            'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
+            'Nu Vainer': { startDay: 2, endDay: 1 },
+            'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
+            'PicPay Vainer': { startDay: 1, endDay: 30 },
+            'PIX': { startDay: 1, endDay: 30, isImmediate: true },
+            'Boleto': { startDay: 1, endDay: 30, isImmediate: true }
+        };
+        
+        // PIX e Boleto são considerados imediatos
+        if (account === 'PIX' || account === 'Boleto') {
+            return 'Imediato';
+        }
+        
+        // Para cartões de crédito, calcular baseado no período de fatura
+        const accountConfig = billingPeriods[account];
+        if (!accountConfig) {
+            return 'N/A';
+        }
+        
+        const { startDay, endDay } = accountConfig;
+        let billingMonth = date.getMonth();
+        let billingYear = date.getFullYear();
+        
+        // Se o dia da transação for maior ou igual ao dia de início do ciclo,
+        // a fatura será fechada no próximo mês
+        if (date.getDate() >= startDay) {
+            billingMonth++;
+            if (billingMonth > 11) {
+                billingMonth = 0;
+                billingYear++;
+            }
+        }
+        
+        // Retornar o mês de fechamento da fatura
+        return new Date(billingYear, billingMonth, endDay).toLocaleDateString('pt-BR', { 
+            month: 'short', 
+            year: 'numeric' 
+        });
+    }
+
+    // Carregar análise por período de fatura
+    async function loadBillingPeriodAnalysis() {
+        const year = billingYearSelect.value;
+        const month = billingMonthSelect.value;
+        
+        if (!year) {
+            showToast('Selecione um ano', 'warning');
+            return;
+        }
+
+        try {
+            // Buscar gastos empresariais para o ano/mês selecionado
+            const params = new URLSearchParams({
+                is_business: 'true',
+                year: year
+            });
+            
+            if (month) {
+                params.append('month', month);
+            }
+
+            const response = await fetch(`${API_BASE_URL}/api/expenses?${params}`, {
+                headers: { Authorization: `Bearer ${getToken()}` }
+            });
+
+            if (!response.ok) throw new Error('Erro ao buscar dados');
+            const allExpenses = await response.json();
+            
+            // Filtrar gastos empresariais
+            let businessExpenses = allExpenses.filter(expense => expense.is_business_expense);
+            
+            // Se mês específico foi selecionado, filtrar por período de fatura
+            if (month) {
+                const targetDate = new Date(year, month - 1);
+                const targetPeriod = targetDate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+                
+                businessExpenses = businessExpenses.filter(expense => {
+                    const billingPeriod = calculateBillingPeriod(expense.transaction_date, expense.account);
+                    return billingPeriod === targetPeriod || billingPeriod === 'Imediato';
+                });
+            }
+
+            // Mostrar resumo do período
+            showBillingSummary(businessExpenses);
+            renderBillingPeriodChart(businessExpenses);
+            
+        } catch (error) {
+            console.error('Erro ao carregar análise de fatura:', error);
+            showToast('Erro ao carregar dados de fatura', 'error');
+        }
+    }
+
+    // Mostrar resumo do período de fatura
+    function showBillingSummary(expenses) {
+        billingSummary.classList.remove('hidden');
+        
+        const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        const count = expenses.length;
+        const average = count > 0 ? total / count : 0;
+        const maxExpense = expenses.length > 0 ? Math.max(...expenses.map(exp => parseFloat(exp.amount))) : 0;
+
+        document.getElementById('billing-period-total').textContent = formatCurrency(total);
+        document.getElementById('billing-period-count').textContent = count;
+        document.getElementById('billing-period-avg').textContent = formatCurrency(average);
+        document.getElementById('billing-period-max').textContent = formatCurrency(maxExpense);
+    }
+
+    // Renderizar gráfico do período de fatura
+    function renderBillingPeriodChart(expenses) {
+        const ctx = document.getElementById('billing-period-chart');
+        if (!ctx) return;
+
+        // Agrupar por dia
+        const dailyData = {};
+        expenses.forEach(expense => {
+            const date = new Date(expense.transaction_date).toLocaleDateString('pt-BR');
+            dailyData[date] = (dailyData[date] || 0) + parseFloat(expense.amount);
+        });
+
+        const labels = Object.keys(dailyData).sort();
+        const data = labels.map(label => dailyData[label]);
+
+        businessCharts.billingPeriod = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Gastos Diários',
+                    data: data,
+                    backgroundColor: '#3b82f6'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return formatCurrency(value);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Gerar alertas empresariais
+    function generateBusinessAlerts(expenses) {
+        if (!businessAlertsContainer) return;
+
+        businessAlertsContainer.innerHTML = '';
+        const alerts = [];
+
+        // Alerta para gastos sem nota fiscal
+        const withoutInvoice = expenses.filter(exp => !exp.has_invoice);
+        if (withoutInvoice.length > 0) {
+            const total = withoutInvoice.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+            alerts.push({
+                type: 'warning',
+                title: 'Gastos sem Nota Fiscal',
+                message: `${withoutInvoice.length} transações (${formatCurrency(total)}) sem nota fiscal`,
+                icon: '⚠️'
+            });
+        }
+
+        // Alerta para gastos altos
+        const highExpenses = expenses.filter(exp => parseFloat(exp.amount) > 1000);
+        if (highExpenses.length > 0) {
+            alerts.push({
+                type: 'warning',
+                title: 'Gastos Elevados',
+                message: `${highExpenses.length} transações acima de R$ 1.000`,
+                icon: '📈'
+            });
+        }
+
+        // Alerta positivo para organização
+        const withInvoicePercent = expenses.length > 0 ? (expenses.filter(exp => exp.has_invoice).length / expenses.length) * 100 : 0;
+        if (withInvoicePercent >= 80) {
+            alerts.push({
+                type: 'success',
+                title: 'Boa Organização',
+                message: `${withInvoicePercent.toFixed(1)}% dos gastos possuem nota fiscal`,
+                icon: '✅'
+            });
+        }
+
+        // Renderizar alertas
+        alerts.forEach(alert => {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `business-alert ${alert.type} p-4 rounded-lg`;
+            alertDiv.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">${alert.icon}</span>
+                    <div>
+                        <h4 class="font-semibold">${alert.title}</h4>
+                        <p class="text-sm">${alert.message}</p>
+                    </div>
+                </div>
+            `;
+            businessAlertsContainer.appendChild(alertDiv);
+        });
+
+        if (alerts.length === 0) {
+            businessAlertsContainer.innerHTML = '<p class="text-gray-500 text-center py-4">Nenhum alerta no momento</p>';
+        }
+    }
+
+    // Exportar dados para CSV
+    async function exportBusinessDataToCsv() {
+        try {
+            const expenses = await fetchBusinessExpenses();
+            
+            if (expenses.length === 0) {
+                showToast('Nenhum dado para exportar', 'warning');
+                return;
+            }
+
+            // Criar cabeçalho CSV
+            const headers = [
+                'Data',
+                'Descrição', 
+                'Valor',
+                'Conta',
+                'Categoria',
+                'Nota Fiscal',
+                'Período Fatura',
+                'Tipo',
+                'Parcela',
+                'Recorrente'
+            ];
+
+            // Converter dados para CSV
+            const csvData = expenses.map(expense => {
+                const hasInvoice = expense.has_invoice === 1 || expense.has_invoice === true;
+                const billingPeriod = calculateBillingPeriod(expense.transaction_date, expense.account);
+                
+                return [
+                    formatDate(expense.transaction_date),
+                    `"${expense.description}"`,
+                    expense.amount,
+                    expense.account,
+                    expense.account_plan_code || 'N/A',
+                    hasInvoice ? 'Sim' : 'Não',
+                    billingPeriod,
+                    'Empresarial',
+                    expense.total_installments > 1 ? `${expense.installment_number}/${expense.total_installments}` : '1/1',
+                    expense.is_recurring_expense ? 'Sim' : 'Não'
+                ].join(',');
+            });
+
+            // Criar arquivo CSV
+            const csvContent = [headers.join(','), ...csvData].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            // Download do arquivo
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `gastos_empresariais_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast('Dados exportados com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao exportar CSV:', error);
+            showToast('Erro ao exportar dados', 'error');
+        }
+    }
+
+    // Exportar dados para PDF
+    async function exportBusinessDataToPdf() {
+        try {
+            const expenses = await fetchBusinessExpenses();
+            
+            if (expenses.length === 0) {
+                showToast('Nenhum dado para exportar', 'warning');
+                return;
+            }
+
+            // Preparar dados para o relatório
+            const reportData = {
+                expenses: expenses,
+                filters: {
+                    periodo: businessPeriodSelect.options[businessPeriodSelect.selectedIndex].text,
+                    conta: businessAccountSelect.value || 'Todas',
+                    notaFiscal: businessInvoiceFilter.options[businessInvoiceFilter.selectedIndex].text
+                },
+                summary: {
+                    total: expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0),
+                    count: expenses.length,
+                    average: expenses.length > 0 ? expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0) / expenses.length : 0,
+                    withInvoice: expenses.filter(exp => exp.has_invoice === 1 || exp.has_invoice === true).length
+                }
+            };
+
+            // Criar formulário para envio ao backend
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `${API_BASE_URL}/api/reports/business-analysis`;
+            form.target = '_blank';
+
+            const tokenInput = document.createElement('input');
+            tokenInput.type = 'hidden';
+            tokenInput.name = 'token';
+            tokenInput.value = getToken();
+
+            const dataInput = document.createElement('input');
+            dataInput.type = 'hidden';
+            dataInput.name = 'data';
+            dataInput.value = JSON.stringify(reportData);
+
+            form.appendChild(tokenInput);
+            form.appendChild(dataInput);
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+
+            showToast('Gerando relatório PDF...', 'info');
+        } catch (error) {
+            console.error('Erro ao exportar PDF:', error);
+            showToast('Erro ao gerar relatório PDF', 'error');
+        }
+    }
+
+    // ========== FIM FUNÇÕES ANÁLISE EMPRESARIAL ==========
 });

@@ -115,6 +115,51 @@
             transform: translateY(-2px);
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
+        
+        /* Business Analysis Styles */
+        .business-metric {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-left: 4px solid #3b82f6;
+        }
+        .business-alert {
+            border-left: 4px solid #f59e0b;
+            background: #fffbeb;
+        }
+        .business-alert.warning {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+        .business-alert.success {
+            border-left-color: #10b981;
+            background: #f0fdf4;
+        }
+        .business-table-row:hover {
+            background: #f8fafc;
+        }
+        .invoice-status-yes {
+            background: #dcfce7;
+            color: #166534;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .invoice-status-no {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .billing-period-badge {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -178,6 +223,9 @@
                     </button>
                     <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="pix-boleto">
                         <i class="fas fa-mobile-alt mr-2"></i>💳 PIX & Boleto
+                    </button>
+                    <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="business-analysis">
+                        <i class="fas fa-briefcase mr-2"></i>💼 Análise Empresarial
                     </button>
                     <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="expenses">
                         <i class="fas fa-list mr-2"></i>📝 Gastos
@@ -405,6 +453,259 @@
                             <h4 class="font-semibold text-blue-600 mb-3">🧾 Boleto por Plano de Conta</h4>
                             <div id="boleto-category-summary" class="space-y-2"></div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aba Análise Empresarial -->
+            <div id="business-analysis-tab" class="tab-content hidden">
+                <!-- Header com Resumo Executivo -->
+                <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-lg shadow-lg mb-8">
+                    <h2 class="text-2xl font-bold mb-4">💼 Análise Empresarial - Dashboard Executivo</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="bg-white bg-opacity-20 p-4 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">📊</span>
+                                <div>
+                                    <p class="text-sm opacity-90">Total Empresarial</p>
+                                    <p id="business-total" class="text-xl font-bold">R$ 0,00</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white bg-opacity-20 p-4 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">📈</span>
+                                <div>
+                                    <p class="text-sm opacity-90">Crescimento Mensal</p>
+                                    <p id="business-growth" class="text-xl font-bold">+0%</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white bg-opacity-20 p-4 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">🧾</span>
+                                <div>
+                                    <p class="text-sm opacity-90">Com Nota Fiscal</p>
+                                    <p id="business-invoiced" class="text-xl font-bold">R$ 0,00</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white bg-opacity-20 p-4 rounded-lg">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">⚠️</span>
+                                <div>
+                                    <p class="text-sm opacity-90">Sem Nota Fiscal</p>
+                                    <p id="business-non-invoiced" class="text-xl font-bold">R$ 0,00</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filtros Empresariais Avançados -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">🔍 Filtros Empresariais</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium">Período</label>
+                            <select id="business-period" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="current-month">Mês Atual</option>
+                                <option value="last-month">Mês Anterior</option>
+                                <option value="quarter">Trimestre</option>
+                                <option value="year">Ano</option>
+                                <option value="custom">Personalizado</option>
+                            </select>
+                        </div>
+                        <div id="custom-date-fields" class="hidden col-span-2">
+                            <label class="block text-sm font-medium">De - Até</label>
+                            <div class="flex gap-2">
+                                <input type="date" id="business-date-from" class="flex-1 p-2 border rounded-lg">
+                                <input type="date" id="business-date-to" class="flex-1 p-2 border rounded-lg">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Conta</label>
+                            <select id="business-account" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Nota Fiscal</label>
+                            <select id="business-invoice-filter" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todos</option>
+                                <option value="with">Com Nota</option>
+                                <option value="without">Sem Nota</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Buscar</label>
+                            <input type="text" id="business-search" placeholder="Descrição..." class="mt-1 block w-full p-2 border rounded-lg">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráficos Empresariais -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📊 Evolução Mensal dos Gastos</h3>
+                        <canvas id="business-evolution-chart"></canvas>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">🏦 Distribuição por Conta</h3>
+                        <canvas id="business-account-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📋 Gastos por Categoria</h3>
+                        <canvas id="business-category-chart"></canvas>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">🧾 Status de Nota Fiscal</h3>
+                        <canvas id="business-invoice-status-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Análise por Fatura/Período -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">📅 Análise por Período de Fatura</h3>
+                    <p class="text-sm text-gray-600 mb-4">
+                        Visualize os gastos organizados por período de fechamento de fatura para melhor controle de fluxo de caixa.
+                    </p>
+                    
+                    <!-- Seletor de Período de Fatura -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div>
+                            <label class="block text-sm font-medium">Ano de Referência</label>
+                            <select id="billing-year" class="mt-1 block w-full p-2 border rounded-lg">
+                                <!-- Preenchido via JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Mês de Fechamento</label>
+                            <select id="billing-month" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todos os Meses</option>
+                                <option value="1">Janeiro</option>
+                                <option value="2">Fevereiro</option>
+                                <option value="3">Março</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Maio</option>
+                                <option value="6">Junho</option>
+                                <option value="7">Julho</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Setembro</option>
+                                <option value="10">Outubro</option>
+                                <option value="11">Novembro</option>
+                                <option value="12">Dezembro</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <button id="filter-billing-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg w-full">
+                                Filtrar Período
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Resumo do Período -->
+                    <div id="billing-summary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 hidden">
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                            <h4 class="font-medium text-blue-700">Total do Período</h4>
+                            <p id="billing-period-total" class="text-2xl font-bold text-blue-600">R$ 0,00</p>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                            <h4 class="font-medium text-green-700">Transações</h4>
+                            <p id="billing-period-count" class="text-2xl font-bold text-green-600">0</p>
+                        </div>
+                        <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                            <h4 class="font-medium text-purple-700">Média por Dia</h4>
+                            <p id="billing-period-avg" class="text-2xl font-bold text-purple-600">R$ 0,00</p>
+                        </div>
+                        <div class="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                            <h4 class="font-medium text-orange-700">Maior Gasto</h4>
+                            <p id="billing-period-max" class="text-2xl font-bold text-orange-600">R$ 0,00</p>
+                        </div>
+                    </div>
+
+                    <!-- Gráfico de Fatura -->
+                    <div class="mb-6">
+                        <canvas id="billing-period-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Tabela Detalhada de Gastos Empresariais -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-semibold text-gray-700">📊 Detalhamento de Gastos Empresariais</h3>
+                        <div class="flex gap-2">
+                            <button id="export-business-csv" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">
+                                <i class="fas fa-file-csv mr-1"></i>Exportar CSV
+                            </button>
+                            <button id="export-business-pdf" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm">
+                                <i class="fas fa-file-pdf mr-1"></i>Exportar PDF
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Estatísticas Rápidas -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="text-center p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Total Exibido</p>
+                            <p id="filtered-total" class="text-lg font-bold text-gray-800">R$ 0,00</p>
+                        </div>
+                        <div class="text-center p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Registros</p>
+                            <p id="filtered-count" class="text-lg font-bold text-gray-800">0</p>
+                        </div>
+                        <div class="text-center p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Média</p>
+                            <p id="filtered-average" class="text-lg font-bold text-gray-800">R$ 0,00</p>
+                        </div>
+                        <div class="text-center p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm text-gray-600">% com Nota</p>
+                            <p id="filtered-invoice-percentage" class="text-lg font-bold text-gray-800">0%</p>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="p-3 font-medium">Data</th>
+                                    <th class="p-3 font-medium">Descrição</th>
+                                    <th class="p-3 font-medium">Valor</th>
+                                    <th class="p-3 font-medium">Conta</th>
+                                    <th class="p-3 font-medium">Categoria</th>
+                                    <th class="p-3 font-medium">Nota Fiscal</th>
+                                    <th class="p-3 font-medium">Período Fatura</th>
+                                    <th class="p-3 font-medium">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="business-expenses-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Análise de Tendências -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">📈 Análise de Tendências</h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="font-medium text-gray-600 mb-3">📊 Comparação Trimestral</h4>
+                            <canvas id="quarterly-comparison-chart"></canvas>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-600 mb-3">🎯 Projeção de Gastos</h4>
+                            <canvas id="expense-projection-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alertas e Recomendações -->
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">⚠️ Alertas e Recomendações</h3>
+                    <div id="business-alerts" class="space-y-4">
+                        <!-- Alertas serão preenchidos dinamicamente -->
                     </div>
                 </div>
             </div>
@@ -753,7 +1054,6 @@
     <script src="dashboard.js"></script>
 </body>
 </html>
-      AOS.init();
     </script>
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
