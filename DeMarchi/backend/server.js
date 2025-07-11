@@ -7,11 +7,24 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const multer = require('multer');
-const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const pdfkit = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+
+// Função para tentar carregar ChartJS com fallback
+let ChartJSNodeCanvas = null;
+let chartCanvasAvailable = false;
+
+try {
+    const chartModule = require('chartjs-node-canvas');
+    ChartJSNodeCanvas = chartModule.ChartJSNodeCanvas;
+    chartCanvasAvailable = true;
+    console.log('✅ ChartJS Canvas carregado com sucesso');
+} catch (error) {
+    console.warn('⚠️ ChartJS Canvas não disponível. Relatórios serão gerados sem gráficos:', error.message);
+    chartCanvasAvailable = false;
+}
 
 // --- 2. CONFIGURAÇÕES PRINCIPAIS ---
 const app = express();
@@ -70,6 +83,24 @@ const authenticateToken = (req, res, next) => {
         next();
     });
 };
+
+// --- 6.1. ROTA DE HEALTH CHECK PARA RAILWAY ---
+app.get('/', (req, res) => {
+    res.status(200).json({ 
+        status: 'OK', 
+        message: 'Controle de Gastos API está funcionando',
+        chartSupport: chartCanvasAvailable ? 'disponível' : 'não disponível',
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'healthy',
+        chartSupport: chartCanvasAvailable,
+        timestamp: new Date().toISOString()
+    });
+});
 
 // --- 7. ROTAS PÚBLICAS (AUTENTICAÇÃO) ---
 app.post('/api/register', async (req, res) => {
@@ -464,52 +495,65 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
             .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
             .slice(0, 5);
 
-        // Gráfico de barras por conta
-        const chartCanvas = new ChartJSNodeCanvas({ width: 600, height: 300 });
-        const chartBarBuffer = await chartCanvas.renderToBuffer({
-            type: 'bar',
-            data: {
-                labels: Object.keys(porConta),
-                datasets: [{
-                    label: 'Gastos por Conta',
-                    data: Object.values(porConta),
-                    backgroundColor: [
-                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'
-                    ]
-                }]
-            },
-            options: { plugins: { legend: { display: false } } }
-        });
+        // Gerar gráficos apenas se canvas estiver disponível
+        let chartBarBuffer = null;
+        let chartPieBuffer = null;
+        let chartLineBuffer = null;
 
-        // Gráfico de pizza por tipo
-        const chartPieBuffer = await chartCanvas.renderToBuffer({
-            type: 'pie',
-            data: {
-                labels: Object.keys(porTipo),
-                datasets: [{
-                    data: Object.values(porTipo),
-                    backgroundColor: ['#3B82F6', '#EF4444']
-                }]
-            }
-        });
+        if (chartCanvasAvailable && ChartJSNodeCanvas) {
+            try {
+                const chartCanvas = new ChartJSNodeCanvas({ width: 600, height: 300 });
+                
+                // Gráfico de barras por conta
+                chartBarBuffer = await chartCanvas.renderToBuffer({
+                    type: 'bar',
+                    data: {
+                        labels: Object.keys(porConta),
+                        datasets: [{
+                            label: 'Gastos por Conta',
+                            data: Object.values(porConta),
+                            backgroundColor: [
+                                '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'
+                            ]
+                        }]
+                    },
+                    options: { plugins: { legend: { display: false } } }
+                });
 
-        // Gráfico de linha por dia
-        const diasLabels = Object.keys(porDia);
-        const diasValores = diasLabels.map(d => porDia[d]);
-        const chartLineBuffer = await chartCanvas.renderToBuffer({
-            type: 'line',
-            data: {
-                labels: diasLabels,
-                datasets: [{
-                    label: 'Gastos por Dia',
-                    data: diasValores,
-                    borderColor: '#6366F1',
-                    backgroundColor: 'rgba(99,102,241,0.2)',
-                    fill: true,
-                    tension: 0.3
-                }]
+                // Gráfico de pizza por tipo
+                chartPieBuffer = await chartCanvas.renderToBuffer({
+                    type: 'pie',
+                    data: {
+                        labels: Object.keys(porTipo),
+                        datasets: [{
+                            data: Object.values(porTipo),
+                            backgroundColor: ['#3B82F6', '#EF4444']
+                        }]
+                    }
+                });
+
+                // Gráfico de linha por dia
+                const diasLabels = Object.keys(porDia);
+                const diasValores = diasLabels.map(d => porDia[d]);
+                chartLineBuffer = await chartCanvas.renderToBuffer({
+                    type: 'line',
+                    data: {
+                        labels: diasLabels,
+                        datasets: [{
+                            label: 'Gastos por Dia',
+                            data: diasValores,
+                            borderColor: '#6366F1',
+                            backgroundColor: 'rgba(99,102,241,0.2)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    }
+                });
+            } catch (chartError) {
+                console.warn('⚠️ Erro ao gerar gráficos, continuando sem eles:', chartError.message);
+                chartCanvasAvailable = false;
             }
-        });
+        }
 
         // Gera PDF
         const doc = new pdfkit({ autoFirstPage: false });
@@ -532,8 +576,15 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
         doc.rect(0, 0, doc.page.width, 40).fill('#6366F1');
         doc.fillColor('white').fontSize(20).text('💳 Gastos por Conta', 0, 10, { align: 'center', width: doc.page.width });
         doc.moveDown(2);
-        doc.image(chartBarBuffer, { fit: [500, 200], align: 'center' });
-        doc.moveDown();
+        
+        if (chartBarBuffer) {
+            doc.image(chartBarBuffer, { fit: [500, 200], align: 'center' });
+            doc.moveDown();
+        } else {
+            doc.fontSize(12).fillColor('#666').text('(Gráfico não disponível - dados em formato de tabela)', { align: 'center' });
+            doc.moveDown(2);
+        }
+        
         Object.entries(porConta).forEach(([conta, valor]) => {
             doc.fontSize(12).fillColor('#222').text(`- ${conta}: R$ ${valor.toFixed(2)}`);
         });
@@ -543,8 +594,15 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
         doc.rect(0, 0, doc.page.width, 40).fill('#F59E0B');
         doc.fillColor('white').fontSize(20).text('🏷️ Distribuição por Tipo', 0, 10, { align: 'center', width: doc.page.width });
         doc.moveDown(2);
-        doc.image(chartPieBuffer, { fit: [300, 200], align: 'center' });
-        doc.moveDown();
+        
+        if (chartPieBuffer) {
+            doc.image(chartPieBuffer, { fit: [300, 200], align: 'center' });
+            doc.moveDown();
+        } else {
+            doc.fontSize(12).fillColor('#666').text('(Gráfico não disponível - dados em formato de tabela)', { align: 'center' });
+            doc.moveDown(2);
+        }
+        
         Object.entries(porTipo).forEach(([tipo, valor]) => {
             doc.fontSize(12).fillColor(tipo === 'Empresarial' ? '#EF4444' : '#3B82F6').text(`- ${tipo}: R$ ${valor.toFixed(2)}`);
         });
@@ -554,7 +612,18 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
         doc.rect(0, 0, doc.page.width, 40).fill('#10B981');
         doc.fillColor('white').fontSize(20).text('📈 Evolução Diária dos Gastos', 0, 10, { align: 'center', width: doc.page.width });
         doc.moveDown(2);
-        doc.image(chartLineBuffer, { fit: [500, 200], align: 'center' });
+        
+        if (chartLineBuffer) {
+            doc.image(chartLineBuffer, { fit: [500, 200], align: 'center' });
+        } else {
+            doc.fontSize(12).fillColor('#666').text('(Gráfico não disponível - dados em formato de tabela)', { align: 'center' });
+            doc.moveDown(2);
+            
+            // Mostrar dados em formato de tabela
+            Object.entries(porDia).forEach(([dia, valor]) => {
+                doc.fontSize(12).fillColor('#222').text(`- ${dia}: R$ ${valor.toFixed(2)}`);
+            });
+        }
 
         // Top 5 maiores gastos
         doc.addPage();
@@ -881,7 +950,7 @@ app.post('/api/recurring-expenses/process', authenticateToken, async (req, res) 
             const [expenseResult] = await pool.query(
                 `INSERT INTO expenses (user_id, transaction_date, amount, description, account, 
                  is_business_expense, account_plan_code, is_recurring_expense, total_installments) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`,
                 [userId, formattedDate, recurring.amount, recurring.description, 
                  recurring.account, recurring.is_business_expense, recurring.account_plan_code]
             );

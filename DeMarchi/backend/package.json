@@ -4,7 +4,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "npm rebuild canvas || echo 'Canvas rebuild failed, continuing without it'"
   },
   "keywords": [],
   "author": "",
@@ -20,5 +21,11 @@
     "multer": "^2.0.1",
     "mysql2": "^3.14.1",
     "pdfkit": "^0.17.1"
+  },
+  "optionalDependencies": {
+    "canvas": "^2.11.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
