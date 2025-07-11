@@ -1516,159 +1516,822 @@ document.addEventListener('DOMContentLoaded', function() {
         irDetails.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // ========== NOVO CÓDIGO PARA CONSULTA DE FATURAMENTO =========
+    // ========== SISTEMA AVANÇADO DE ANÁLISE DE FATURAS ==========
     const billingForm = document.getElementById('billing-period-form');
     const billingResults = document.getElementById('billing-results');
+    const billingLoading = document.getElementById('billing-loading');
+    const setCurrentMonthBtn = document.getElementById('set-current-month-btn');
+    const billingAccountFilter = document.getElementById('billing-account-filter');
 
-    // Definição dos períodos de fatura para cada conta
+    // Configuração completa dos períodos de fatura
     const billingPeriods = {
-        'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
-        'Nu Vainer': { startDay: 2, endDay: 1 },
-        'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
-        'PicPay Vainer': { startDay: 1, endDay: 30 },
-        'Ducatto': { startDay: 1, endDay: 30 },
-        'Master': { startDay: 1, endDay: 30 }
+        'Nu Bank Ketlyn': { 
+            startDay: 2, 
+            endDay: 1, 
+            type: 'cross_month',
+            description: 'Dia 2 ao dia 1 do mês seguinte',
+            color: '#8B5CF6'
+        },
+        'Nu Vainer': { 
+            startDay: 2, 
+            endDay: 1, 
+            type: 'cross_month',
+            description: 'Dia 2 ao dia 1 do mês seguinte',
+            color: '#8B5CF6'
+        },
+        'Ourocard Ketlyn': { 
+            startDay: 17, 
+            endDay: 16, 
+            type: 'cross_month',
+            description: 'Dia 17 ao dia 16 do mês seguinte',
+            color: '#F59E0B'
+        },
+        'PicPay Vainer': { 
+            startDay: 1, 
+            endDay: 30, 
+            type: 'same_month',
+            description: 'Dia 1 ao dia 30/31 do mês',
+            color: '#10B981'
+        },
+        'Ducatto': { 
+            startDay: 1, 
+            endDay: 30, 
+            type: 'same_month',
+            description: 'Dia 1 ao dia 30/31 do mês',
+            color: '#3B82F6'
+        },
+        'Master': { 
+            startDay: 1, 
+            endDay: 30, 
+            type: 'same_month',
+            description: 'Dia 1 ao dia 30/31 do mês',
+            color: '#EF4444'
+        }
     };
 
-    billingForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
+    // Inicializar valores padrão para o sistema de faturas
+    function initializeBillingSystem() {
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth() + 1;
 
-        // Use o ano e mês dos filtros principais do histórico de despesas
-        const filterYearEl = document.getElementById('filter-year');
-        const filterMonthEl = document.getElementById('filter-month');
-        let year = filterYearEl && filterYearEl.value ? parseInt(filterYearEl.value, 10) : new Date().getFullYear();
-        let month = filterMonthEl && filterMonthEl.value ? parseInt(filterMonthEl.value, 10) : (new Date().getMonth() + 1);
-
-        // Alternativamente, se quiser usar o mês do select do quadro de fatura:
-        // const month = parseInt(document.getElementById('billing-month').value, 10);
-
-        if (!month) {
-            showNotification('Por favor, selecione um mês.', 'error');
-            return;
+        // Definir ano atual
+        if (billingYearSelect) {
+            billingYearSelect.value = currentYear;
         }
 
-        // IMPORTANTE: O mês selecionado é o mês de fechamento da fatura
-        // Os gastos devem ser buscados no mês ANTERIOR ao selecionado
-        month = month - 1;
-        if (month === 0) {
-            month = 12;
-            year = year - 1;
+        // Definir mês atual
+        if (billingMonthSelect) {
+            billingMonthSelect.value = currentMonth;
+        }
+    }
+
+    // Botão para definir mês atual
+    if (setCurrentMonthBtn) {
+        setCurrentMonthBtn.addEventListener('click', function() {
+            const currentDate = new Date();
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth() + 1;
+
+            if (billingYearSelect) billingYearSelect.value = currentYear;
+            if (billingMonthSelect) billingMonthSelect.value = currentMonth;
+
+            showToast('Mês atual definido com sucesso!', 'success');
+        });
+    }
+
+    // Função para calcular período de fatura específico
+    function calculateBillingPeriod(account, year, month) {
+        const config = billingPeriods[account];
+        if (!config) {
+            return { error: 'Configuração de fatura não encontrada para esta conta' };
         }
 
-        // Lista das contas exatamente como no banco de dados
-        const accounts = [
-            'Nu Bank Ketlyn',
-            'Nu Vainer',
-            'Ourocard Ketlyn',
-            'PicPay Vainer',
-            'Ducatto',
-            'Master'
-        ];
+        // Validar parâmetros de entrada
+        if (!year || !month || isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+            return { error: 'Parâmetros de ano e mês inválidos' };
+        }
 
-        billingResults.innerHTML = '<div class="text-gray-500 mb-2">Buscando dados...</div>';
-
-        // Busca e exibe resultados para cada conta
-        const allResults = await Promise.all(accounts.map(async (account) => {
-            const period = billingPeriods[account];
-            if (!period) return { account, error: 'Conta inválida.' };
-
-            // Calcula o intervalo de datas para o período vigente
-            let startDate, endDate;
-            if (account === 'Nu Bank Ketlyn' || account === 'Nu Vainer') {
-                // Nubank: do dia 2 do mês até dia 1 do mês seguinte (inclusive)
-                startDate = new Date(year, month - 1, 2);
-                endDate = new Date(year, month, 1);
-            } else if (account === 'Ourocard Ketlyn') {
-                // Ourocard: do dia 17 do mês até dia 16 do mês seguinte (inclusive)
-                startDate = new Date(year, month - 1, 17);
-                endDate = new Date(year, month, 16);
+        let startDate, endDate;
+        
+        try {
+            if (config.type === 'cross_month') {
+                // Para contas que cruzam mês (Nu Bank, Ourocard)
+                // O mês selecionado é o de fechamento, buscar gastos do período anterior
+                const previousMonth = month === 1 ? 12 : month - 1;
+                const previousYear = month === 1 ? year - 1 : year;
+                
+                startDate = new Date(previousYear, previousMonth - 1, config.startDay);
+                endDate = new Date(year, month - 1, config.endDay);
             } else {
-                // fallback
-                startDate = new Date(year, month - 1, 1);
-                endDate = new Date(year, month, 0);
+                // Para contas de mesmo mês (PicPay, Ducatto, Master)
+                // O mês selecionado é o de fechamento, buscar gastos do mesmo período
+                const targetMonth = month === 1 ? 12 : month - 1;
+                const targetYear = month === 1 ? year - 1 : year;
+                
+                startDate = new Date(targetYear, targetMonth - 1, config.startDay);
+                
+                // Calcular último dia do mês
+                const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+                endDate = new Date(targetYear, targetMonth - 1, Math.min(config.endDay, lastDay));
+            }
+
+            // Validar se as datas foram criadas corretamente
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                return { error: 'Erro ao calcular datas do período de fatura' };
+            }
+
+            // Verificar se startDate não é posterior a endDate
+            if (startDate > endDate) {
+                return { error: 'Data de início não pode ser posterior à data de fim' };
+            }
+
+            return {
+                startDate,
+                endDate,
+                config,
+                periodDescription: `${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}`
+            };
+        } catch (error) {
+            console.error('Erro ao calcular período de fatura:', error);
+            return { error: 'Erro interno ao calcular período de fatura' };
+        }
+    }
+
+    // Testar conexão com o banco de dados
+    async function testDatabaseConnection() {
+        try {
+            const token = getToken();
+            if (!token) {
+                console.warn('⚠️ Token de autenticação não encontrado para teste de conectividade');
+                return false;
+            }
+
+            console.log('🔗 Testando conexão com o banco de dados...');
+            
+            // Fazer uma requisição simples para testar a conectividade
+            const response = await fetch(`${API_BASE_URL}/api/expenses?limit=1`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('✅ Conexão com banco de dados OK - Dados disponíveis:', data.length, 'registro(s)');
+                showDatabaseStatus(true, data.length);
+                return true;
+            } else {
+                console.error('❌ Erro na conexão com banco de dados:', response.status, response.statusText);
+                showDatabaseStatus(false, 0);
+                return false;
+            }
+        } catch (error) {
+            console.error('❌ Erro ao testar conexão com banco:', error.message);
+            showDatabaseStatus(false, 0);
+            return false;
+        }
+    }
+
+    // Mostrar status da conexão com banco
+    function showDatabaseStatus(connected, recordCount) {
+        // Remove status anterior se existir
+        const existingStatus = document.getElementById('db-status');
+        if (existingStatus) {
+            existingStatus.remove();
+        }
+        
+        // Cria um pequeno indicador de status
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'db-status';
+        statusDiv.className = `fixed bottom-4 right-4 z-50 px-3 py-2 rounded-lg text-sm font-medium shadow-lg ${
+            connected ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-red-100 text-red-800 border border-red-200'
+        }`;
+        statusDiv.innerHTML = connected 
+            ? `<i class="fas fa-database"></i> Banco Conectado (${recordCount > 0 ? recordCount + ' registros' : 'sem dados'})`
+            : `<i class="fas fa-exclamation-triangle"></i> Banco Desconectado`;
+        
+        // Adiciona à página
+        document.body.appendChild(statusDiv);
+        
+        // Remove automaticamente após 5 segundos
+        setTimeout(() => {
+            if (statusDiv.parentNode) {
+                statusDiv.remove();
+            }
+        }, 5000);
+    }
+
+    // Função principal de busca de faturas
+    if (billingForm) {
+        // Testar conectividade quando a página carrega
+        testDatabaseConnection();
+
+        billingForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const year = parseInt(billingYearSelect?.value, 10);
+            const month = parseInt(billingMonthSelect?.value, 10);
+            const accountFilter = billingAccountFilter?.value || '';
+
+            console.log('🚀 Iniciando busca de faturas:', { year, month, accountFilter });
+
+            // Validações mais robustas
+            if (!year || !month || isNaN(year) || isNaN(month)) {
+                showNotification('Por favor, selecione ano e mês válidos.', 'error');
+                return;
+            }
+
+            if (year < 2020 || year > 2030) {
+                showNotification('Ano deve estar entre 2020 e 2030.', 'error');
+                return;
+            }
+
+            if (month < 1 || month > 12) {
+                showNotification('Mês deve estar entre 1 e 12.', 'error');
+                return;
+            }
+
+            // Verificar se a conta especificada existe nas configurações
+            if (accountFilter && !billingPeriods[accountFilter]) {
+                showNotification('Conta selecionada não tem configuração de fatura.', 'error');
+                return;
+            }
+
+            // Verificar se há token de autenticação
+            const token = getToken();
+            if (!token) {
+                showNotification('Sessão expirada. Faça login novamente.', 'error');
+                showLogin();
+                return;
+            }
+
+            // Mostrar loading com informações detalhadas
+            if (billingLoading) {
+                billingLoading.innerHTML = `
+                    <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-4"></i>
+                    <p class="text-gray-600 mb-2">Analisando faturas...</p>
+                    <div class="text-sm text-gray-500">
+                        <p>📅 Período: ${getMonthName(month)}/${year}</p>
+                        <p>🏦 Contas: ${accountsToAnalyze.length} conta(s)</p>
+                        <p>🔍 Buscando dados no banco...</p>
+                    </div>
+                `;
+                billingLoading.classList.remove('hidden');
+            }
+            if (billingResults) {
+                billingResults.innerHTML = '';
             }
 
             try {
-                const response = await fetch(
-                    `${API_BASE_URL}/api/expenses?account=${encodeURIComponent(account)}&start_date=${startDate.toISOString().slice(0, 10)}&end_date=${endDate.toISOString().slice(0, 10)}`,
-                    { headers: { Authorization: `Bearer ${getToken()}` } }
-                );
-                if (!response.ok) throw new Error('Erro ao buscar dados.');
-                const expenses = await response.json();
+                // Determinar contas a analisar
+                const accountsToAnalyze = accountFilter 
+                    ? [accountFilter] 
+                    : Object.keys(billingPeriods);
 
-                // Filtra os gastos para garantir que estejam dentro do intervalo
-                const filteredExpenses = expenses.filter(expense => {
-                    const expenseDate = new Date(expense.transaction_date);
-                    return expenseDate >= startDate && expenseDate <= endDate;
+                console.log('📋 Contas a analisar:', accountsToAnalyze);
+
+                // Buscar dados para cada conta
+                const results = await Promise.all(
+                    accountsToAnalyze.map(account => analyzeBillingForAccount(account, year, month))
+                );
+
+                console.log('📊 Resultados obtidos:', results);
+
+                // Verificar se obteve algum resultado válido
+                const successfulResults = results.filter(r => r.success);
+                if (successfulResults.length === 0) {
+                    showNotification('Nenhuma fatura encontrada para o período selecionado.', 'info');
+                    if (billingResults) {
+                        billingResults.innerHTML = `
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                                <i class="fas fa-info-circle text-yellow-600 text-3xl mb-3"></i>
+                                <h4 class="text-lg font-semibold text-yellow-800 mb-2">Nenhum Dado Encontrado</h4>
+                                <p class="text-yellow-700">
+                                    Não foram encontrados gastos para o período de ${getMonthName(month)}/${year}.
+                                    <br>Verifique se existem gastos cadastrados para essas datas.
+                                </p>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                // Renderizar resultados
+                await renderBillingResults(results, year, month);
+
+                // Notificar sucesso
+                const totalExpenses = successfulResults.reduce((sum, r) => sum + (r.stats?.count || 0), 0);
+                showNotification(`Análise concluída! ${totalExpenses} gastos encontrados em ${successfulResults.length} conta(s).`, 'success');
+
+            } catch (error) {
+                console.error('❌ Erro na busca de faturas:', error);
+                showNotification('Erro ao buscar dados das faturas: ' + error.message, 'error');
+                
+                // Mostrar informações de debug no console
+                console.error('Detalhes do erro:', {
+                    url: API_BASE_URL,
+                    token: token ? 'Presente' : 'Ausente',
+                    year,
+                    month,
+                    accountFilter,
+                    accountsToAnalyze
                 });
 
-                return { account, startDate, endDate, expenses: filteredExpenses };
-            } catch (error) {
-                return { account, error: error.message };
+                // Exibir erro detalhado na interface
+                if (billingResults) {
+                    billingResults.innerHTML = `
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-6">
+                            <div class="flex items-center mb-4">
+                                <i class="fas fa-exclamation-circle text-red-600 text-2xl mr-3"></i>
+                                <h4 class="text-lg font-semibold text-red-800">Erro ao Buscar Dados</h4>
+                            </div>
+                            <div class="text-red-700 mb-4">
+                                <p class="mb-2"><strong>Erro:</strong> ${error.message}</p>
+                                <p class="mb-2"><strong>API:</strong> ${API_BASE_URL}</p>
+                                <p class="mb-2"><strong>Período:</strong> ${getMonthName(month)}/${year}</p>
+                                <p class="mb-2"><strong>Contas:</strong> ${accountsToAnalyze.join(', ')}</p>
+                            </div>
+                            <div class="bg-red-100 border border-red-300 rounded p-3 text-sm">
+                                <p class="font-medium text-red-800 mb-2">Possíveis soluções:</p>
+                                <ul class="list-disc list-inside text-red-700 space-y-1">
+                                    <li>Verifique sua conexão com a internet</li>
+                                    <li>Faça login novamente se a sessão expirou</li>
+                                    <li>Tente novamente em alguns instantes</li>
+                                    <li>Contate o suporte se o problema persistir</li>
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+            } finally {
+                // Esconder loading
+                if (billingLoading) {
+                    billingLoading.classList.add('hidden');
+                }
             }
-        }));
-
-        // Renderiza os resultados de todas as contas
-        billingResults.innerHTML = '';
-        allResults.forEach(result => {
-            if (result.error) {
-                billingResults.innerHTML += `<div class="mb-6"><h4 class="text-lg font-semibold text-gray-700 mb-2">${result.account}</h4><p class="text-red-600">${result.error}</p></div>`;
-                return;
-            }
-            billingResults.innerHTML += renderBillingResultsBlock(result.expenses, result.account, result.startDate, result.endDate);
         });
-    });
+    }
 
-    // Função para renderizar o bloco de resultados de uma conta
-    function renderBillingResultsBlock(expenses, account, startDate, endDate) {
+    // Configurar botão de teste de conexão
+    const testDbConnectionBtn = document.getElementById('test-db-connection-btn');
+    if (testDbConnectionBtn) {
+        testDbConnectionBtn.addEventListener('click', async function() {
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testando...';
+            
+            const success = await testDatabaseConnection();
+            
+            if (success) {
+                showNotification('Conexão com banco de dados estabelecida com sucesso!', 'success');
+            } else {
+                showNotification('Falha na conexão com banco de dados. Verifique sua conexão e autenticação.', 'error');
+            }
+            
+            this.disabled = false;
+            this.innerHTML = '<i class="fas fa-database"></i> Testar Conexão';
+        });
+    }
+
+    // Analisar fatura para uma conta específica
+    async function analyzeBillingForAccount(account, year, month) {
+        try {
+            console.log(`🔍 Iniciando análise para ${account} - ${month}/${year}`);
+            
+            const period = calculateBillingPeriod(account, year, month);
+            
+            if (period.error) {
+                console.error(`❌ Erro no cálculo do período para ${account}:`, period.error);
+                return { account, error: period.error, success: false };
+            }
+
+            const { startDate, endDate, config, periodDescription } = period;
+
+            // Validação adicional das datas
+            if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.error(`❌ Datas inválidas para ${account}:`, { startDate, endDate });
+                return { 
+                    account, 
+                    error: 'Datas de período inválidas', 
+                    success: false 
+                };
+            }
+
+            // Buscar gastos no período
+            const startDateStr = startDate.toISOString().slice(0, 10);
+            const endDateStr = endDate.toISOString().slice(0, 10);
+            
+            console.log(`📅 Buscando gastos para ${account} de ${startDateStr} a ${endDateStr}`);
+            
+            const url = `${API_BASE_URL}/api/expenses?account=${encodeURIComponent(account)}&start_date=${startDateStr}&end_date=${endDateStr}`;
+            console.log(`🌐 URL da API:`, url);
+            
+            const response = await fetch(url, { 
+                headers: { Authorization: `Bearer ${getToken()}` } 
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`❌ Erro HTTP para ${account}:`, response.status, errorText);
+                throw new Error(`Erro ao buscar dados para ${account}: ${response.status} - ${errorText}`);
+            }
+
+            const expenses = await response.json();
+            console.log(`💰 Gastos encontrados para ${account}:`, expenses.length, 'registros');
+
+            // Filtrar e validar gastos
+            const validExpenses = expenses.filter(expense => {
+                const expenseDate = new Date(expense.transaction_date);
+                const isValid = expenseDate >= startDate && expenseDate <= endDate;
+                if (!isValid) {
+                    console.log(`⚠️ Gasto fora do período filtrado:`, expense.transaction_date, expense.description);
+                }
+                return isValid;
+            });
+
+            console.log(`✅ Gastos válidos para ${account}:`, validExpenses.length, 'de', expenses.length);
+
+            // Calcular estatísticas
+            const stats = calculateBillingStats(validExpenses);
+            console.log(`📊 Estatísticas para ${account}:`, stats);
+
+            return {
+                account,
+                config,
+                period: periodDescription,
+                startDate,
+                endDate,
+                expenses: validExpenses,
+                stats,
+                success: true
+            };
+
+        } catch (error) {
+            console.error(`❌ Erro ao analisar ${account}:`, error);
+            return { 
+                account, 
+                error: error.message || 'Erro desconhecido',
+                success: false
+            };
+        }
+    }
+
+    // Calcular estatísticas da fatura
+    function calculateBillingStats(expenses) {
+        const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+        const count = expenses.length;
+        const average = count > 0 ? total / count : 0;
+        
+        const amounts = expenses.map(exp => parseFloat(exp.amount || 0));
+        const maxAmount = Math.max(...amounts, 0);
+        const minAmount = count > 0 ? Math.min(...amounts) : 0;
+
+        // Agrupar por categoria
+        const byCategory = {};
+        expenses.forEach(exp => {
+            const category = exp.account_plan_code || 'Sem categoria';
+            if (!byCategory[category]) {
+                byCategory[category] = { count: 0, total: 0 };
+            }
+            byCategory[category].count++;
+            byCategory[category].total += parseFloat(exp.amount || 0);
+        });
+
+        return {
+            total,
+            count,
+            average,
+            maxAmount,
+            minAmount,
+            byCategory
+        };
+    }
+
+    // Renderizar resultados completos da busca de faturas
+    async function renderBillingResults(results, year, month) {
+        if (!billingResults) return;
+
+        // Preparar dados do resumo
+        const summary = {
+            totalAccounts: results.length,
+            successfulAccounts: results.filter(r => r.success).length,
+            totalAmount: 0,
+            totalTransactions: 0
+        };
+
+        results.forEach(result => {
+            if (result.success && result.stats) {
+                summary.totalAmount += result.stats.total;
+                summary.totalTransactions += result.stats.count;
+            }
+        });
+
+        // Renderizar cabeçalho com resumo
         let html = `
-            <div class="mb-8">
-                <h4 class="text-lg font-semibold text-gray-700 mb-2">Resultados para ${account}</h4>
-                <p class="text-sm text-gray-500 mb-2">Período: ${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}</p>
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
+                <h4 class="text-xl font-bold text-gray-800 mb-4">
+                    📊 Resumo das Faturas - ${getMonthName(month)}/${year}
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="bg-white p-4 rounded-lg border shadow-sm">
+                        <div class="text-sm text-gray-600">Contas Analisadas</div>
+                        <div class="text-2xl font-bold text-blue-600">${summary.successfulAccounts}/${summary.totalAccounts}</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg border shadow-sm">
+                        <div class="text-sm text-gray-600">Total Gasto</div>
+                        <div class="text-2xl font-bold text-green-600">${formatCurrencyDetailed(summary.totalAmount)}</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg border shadow-sm">
+                        <div class="text-sm text-gray-600">Transações</div>
+                        <div class="text-2xl font-bold text-purple-600">${summary.totalTransactions}</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg border shadow-sm">
+                        <div class="text-sm text-gray-600">Média por Transação</div>
+                        <div class="text-2xl font-bold text-orange-600">
+                            ${summary.totalTransactions > 0 ? formatCurrencyDetailed(summary.totalAmount / summary.totalTransactions) : formatCurrencyDetailed(0)}
+                        </div>
+                    </div>
+                </div>
+            </div>
         `;
 
-        if (!expenses || expenses.length === 0) {
-            html += `<p class="text-gray-500">Nenhum gasto encontrado neste período.</p></div>`;
-            return html;
+        // Renderizar cada conta
+        results.forEach(result => {
+            if (result.error) {
+                html += renderErrorCard(result);
+            } else {
+                html += renderAccountBillingCard(result);
+            }
+        });
+
+        // Adicionar botão de exportação se houver dados
+        if (summary.totalTransactions > 0) {
+            html += `
+                <div class="mt-6 text-center">
+                    <button onclick="exportBillingData(${JSON.stringify(results).replace(/"/g, '&quot;')}, ${year}, ${month})" 
+                            class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors">
+                        <i class="fas fa-file-excel"></i> Exportar Dados (CSV)
+                    </button>
+                </div>
+            `;
         }
 
-        const groupedByDay = groupExpensesByDay(expenses);
+        billingResults.innerHTML = html;
+    }
 
-        html += `
-            <div class="overflow-x-auto">
-            <table class="table table-bordered w-full text-sm">
-                <thead>
-                    <tr>
-                        <th>Dia</th>
-                        <th>Descrição</th>
-                        <th>Valor</th>
-                        <th>Conta</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${Object.keys(groupedByDay).map(day => `
-                        <tr>
-                            <td>${day}</td>
-                            <td>${groupedByDay[day].map(expense => expense.description).join(', ')}</td>
-                            <td>${formatCurrencyDetailed(groupedByDay[day].reduce((sum, expense) => sum + parseFloat(expense.amount), 0))}</td>
-                            <td>${groupedByDay[day][0].account}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
+    // Renderizar card de erro
+    function renderErrorCard(result) {
+        return `
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle text-red-600 mr-3"></i>
+                    <div>
+                        <h5 class="font-semibold text-red-800">${result.account}</h5>
+                        <p class="text-red-600 text-sm">${result.error}</p>
+                    </div>
+                </div>
             </div>
-        </div>
         `;
+    }
+
+    // Renderizar card completo para uma conta
+    function renderAccountBillingCard(result) {
+        const { account, config, period, expenses, stats } = result;
+        
+        let html = `
+            <div class="bg-white border rounded-lg shadow-md mb-6 overflow-hidden">
+                <!-- Cabeçalho da conta -->
+                <div class="bg-gradient-to-r from-gray-50 to-gray-100 p-4 border-b">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full mr-3" style="background-color: ${config.color}"></div>
+                            <div>
+                                <h5 class="text-lg font-semibold text-gray-800">${account}</h5>
+                                <p class="text-sm text-gray-600">
+                                    <i class="fas fa-calendar-alt"></i> ${period}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold" style="color: ${config.color}">
+                                ${formatCurrencyDetailed(stats.total)}
+                            </div>
+                            <div class="text-sm text-gray-600">${stats.count} transações</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estatísticas -->
+                <div class="p-4 bg-gray-50 border-b">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="text-center">
+                            <div class="text-sm text-gray-600">Gasto Médio</div>
+                            <div class="text-lg font-semibold text-blue-600">
+                                ${formatCurrencyDetailed(stats.average)}
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-sm text-gray-600">Maior Gasto</div>
+                            <div class="text-lg font-semibold text-red-600">
+                                ${formatCurrencyDetailed(stats.maxAmount)}
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-sm text-gray-600">Menor Gasto</div>
+                            <div class="text-lg font-semibold text-green-600">
+                                ${formatCurrencyDetailed(stats.minAmount)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        `;
+
+        // Tabela de transações (limitada a 10 itens com opção de expandir)
+        if (expenses.length > 0) {
+            const showLimit = 10;
+            const displayExpenses = expenses.slice(0, showLimit);
+            const hasMore = expenses.length > showLimit;
+
+            html += `
+                <div class="p-4">
+                    <h6 class="font-semibold text-gray-700 mb-3">
+                        <i class="fas fa-list"></i> Transações Detalhadas
+                        ${hasMore ? `(mostrando ${showLimit} de ${expenses.length})` : ''}
+                    </h6>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="text-left p-2 border">Data</th>
+                                    <th class="text-left p-2 border">Descrição</th>
+                                    <th class="text-right p-2 border">Valor</th>
+                                    <th class="text-center p-2 border">Categoria</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            displayExpenses.forEach(expense => {
+                html += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="p-2 border text-gray-700">
+                            ${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td class="p-2 border text-gray-700">
+                            ${expense.description}
+                            ${expense.is_business_expense ? '<span class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Empresarial</span>' : ''}
+                        </td>
+                        <td class="p-2 border text-right font-medium">
+                            ${formatCurrencyDetailed(parseFloat(expense.amount))}
+                        </td>
+                        <td class="p-2 border text-center">
+                            <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
+                                ${expense.account_plan_code || 'N/A'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+            `;
+
+            // Botão para mostrar mais transações
+            if (hasMore) {
+                html += `
+                    <div class="mt-4 text-center">
+                        <button onclick="showAllTransactions('${account}', ${JSON.stringify(expenses).replace(/"/g, '&quot;')})" 
+                                class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                            <i class="fas fa-eye"></i> Ver todas as ${expenses.length} transações
+                        </button>
+                    </div>
+                `;
+            }
+
+            html += `</div>`;
+        } else {
+            html += `
+                <div class="p-4 text-center text-gray-500">
+                    <i class="fas fa-inbox text-3xl mb-2"></i>
+                    <p>Nenhuma transação encontrada neste período</p>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
         return html;
     }
 
-    function groupExpensesByDay(expenses) {
-        return expenses.reduce((acc, expense) => {
-            const day = new Date(expense.transaction_date).toLocaleDateString('pt-BR');
-            if (!acc[day]) acc[day] = [];
-            acc[day].push(expense);
-            return acc;
-        }, {});
+    // Função auxiliar para obter nome do mês
+    function getMonthName(month) {
+        const monthNames = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        return monthNames[month - 1] || 'Mês inválido';
+    }
+
+    // Função global para mostrar todas as transações (chamada pelo botão)
+    window.showAllTransactions = function(account, expenses) {
+        if (typeof expenses === 'string') {
+            expenses = JSON.parse(expenses);
+        }
+
+        let html = `
+            <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+                    <div class="p-6 border-b">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-xl font-bold">Todas as Transações - ${account}</h3>
+                            <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-6 overflow-y-auto max-h-[70vh]">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="text-left p-3 border">Data</th>
+                                        <th class="text-left p-3 border">Descrição</th>
+                                        <th class="text-right p-3 border">Valor</th>
+                                        <th class="text-center p-3 border">Categoria</th>
+                                        <th class="text-center p-3 border">Tipo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `;
+
+        expenses.forEach(expense => {
+            html += `
+                <tr class="hover:bg-gray-50">
+                    <td class="p-3 border">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
+                    <td class="p-3 border">${expense.description}</td>
+                    <td class="p-3 border text-right font-medium">${formatCurrencyDetailed(parseFloat(expense.amount))}</td>
+                    <td class="p-3 border text-center">
+                        <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
+                            ${expense.account_plan_code || 'N/A'}
+                        </span>
+                    </td>
+                    <td class="p-3 border text-center">
+                        <span class="text-xs px-2 py-1 rounded ${expense.is_business_expense ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">
+                            ${expense.is_business_expense ? 'Empresarial' : 'Pessoal'}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', html);
+    };
+
+    // Função global para exportar dados (chamada pelo botão)
+    window.exportBillingData = function(results, year, month) {
+        try {
+            let csv = 'Conta,Data,Descrição,Valor,Categoria,Tipo,Período\n';
+            
+            results.forEach(result => {
+                if (result.success && result.expenses) {
+                    result.expenses.forEach(expense => {
+                        csv += `"${result.account}","${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}","${expense.description}","${parseFloat(expense.amount).toFixed(2)}","${expense.account_plan_code || 'N/A'}","${expense.is_business_expense ? 'Empresarial' : 'Pessoal'}","${result.period}"\n`;
+                    });
+                }
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `faturas_${getMonthName(month)}_${year}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showToast('Dados exportados com sucesso!', 'success');
+        } catch (error) {
+            console.error('Erro ao exportar dados:', error);
+            showToast('Erro ao exportar dados', 'error');
+        }
+    };
+
+    // Inicializar sistema de faturas quando o DOM carregar
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeBillingSystem);
+    } else {
+        initializeBillingSystem();
     }
 
     // Helper to destroy Chart.js instance safely and clear Chart registry
@@ -2795,6 +3458,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Destruir gráficos empresariais existentes
     function destroyBusinessCharts() {
+        // Limpar timeouts pendentes
+        if (quarterlyTimeout) {
+            clearTimeout(quarterlyTimeout);
+            quarterlyTimeout = null;
+        }
+        if (projectionTimeout) {
+            clearTimeout(projectionTimeout);
+            projectionTimeout = null;
+        }
+
         // Lista de IDs dos canvas de gráficos empresariais
         const canvasIds = [
             'business-evolution-chart',
@@ -3116,14 +3789,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 const labels = Object.keys(quarterlyData).sort();
                 const data = labels.map(label => quarterlyData[label]);
 
-                // Verificação final antes de criar o gráfico
-                const finalCheck = Chart.getChart(ctx);
-                if (finalCheck) {
-                    console.warn(`AVISO: Ainda existe gráfico ID ${finalCheck.id} no canvas quarterly-comparison-chart`);
+                // Destruição robusta do gráfico existente
+                if (businessCharts.quarterly) {
                     try {
-                        finalCheck.destroy();
+                        businessCharts.quarterly.destroy();
+                        businessCharts.quarterly = null;
                     } catch (e) {
-                        console.error('Erro ao destruir gráfico restante:', e);
+                        console.error('Erro ao destruir gráfico quarterly:', e);
+                    }
+                }
+
+                // Verificação adicional no canvas
+                const existingChart = Chart.getChart(ctx);
+                if (existingChart) {
+                    try {
+                        existingChart.destroy();
+                    } catch (e) {
+                        console.error('Erro ao destruir gráfico no canvas:', e);
                     }
                 }
 
@@ -3297,14 +3979,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     projectionData.push(average * (1 + variation));
                 }
 
-                // Verificação final antes de criar o gráfico
-                const finalCheck = Chart.getChart(ctx);
-                if (finalCheck) {
-                    console.warn(`AVISO: Ainda existe gráfico ID ${finalCheck.id} no canvas expense-projection-chart`);
+                // Destruição robusta do gráfico existente
+                if (businessCharts.projection) {
                     try {
-                        finalCheck.destroy();
+                        businessCharts.projection.destroy();
+                        businessCharts.projection = null;
                     } catch (e) {
-                        console.error('Erro ao destruir gráfico restante:', e);
+                        console.error('Erro ao destruir gráfico projection:', e);
+                    }
+                }
+
+                // Verificação adicional no canvas
+                const existingChart = Chart.getChart(ctx);
+                if (existingChart) {
+                    try {
+                        existingChart.destroy();
+                    } catch (e) {
+                        console.error('Erro ao destruir gráfico no canvas:', e);
                     }
                 }
 
