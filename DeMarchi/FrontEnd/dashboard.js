@@ -66,6 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const businessSearchInput = document.getElementById('business-search');
     const billingYearSelect = document.getElementById('billing-year');
     const billingMonthSelect = document.getElementById('billing-month');
+    const billingAccountSelect = document.getElementById('billing-account');
     const filterBillingBtn = document.getElementById('filter-billing-btn');
     const billingSummary = document.getElementById('billing-summary');
     const businessExpensesTable = document.getElementById('business-expenses-table');
@@ -106,9 +107,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }).format(value);
     }
 
-    function formatDate(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('pt-BR');
+    // Nova função para formatação com separadores de milhares
+    function formatCurrencyDetailed(value) {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
     }
 
     function formatDate(dateString) {
@@ -685,14 +691,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     subtitle: {
                         display: true,
-                        text: `Maior gasto: R$ ${max.toFixed(2)} | Menor gasto: R$ ${min ? min.toFixed(2) : '0.00'}`,
+                        text: `Maior gasto: ${formatCurrencyDetailed(max)} | Menor gasto: ${min ? formatCurrencyDetailed(min) : formatCurrencyDetailed(0)}`,
                         color: getThemeColor('#666', '#ccc'),
                         font: { size: 13 }
                     },
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: ctx => `Dia ${ctx.label}: R$ ${ctx.parsed.y.toFixed(2)}`
+                            label: ctx => `Dia ${ctx.label}: ${formatCurrencyDetailed(ctx.parsed.y)}`
                         }
                     },
                     datalabels: {
@@ -700,7 +706,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         anchor: 'end', align: 'top', font: { weight: 'bold' },
                         formatter: v => {
                             const val = getNumberValue(v);
-                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
+                            return val > 0 ? formatCurrencyDetailed(val) : '';
                         }
                     }
                 },
@@ -744,7 +750,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     subtitle: {
                         display: true,
-                        text: `Total: R$ ${total.toFixed(2)}`,
+                        text: `Total: ${formatCurrencyDetailed(total)}`,
                         color: getThemeColor('#666', '#ccc'),
                         font: { size: 13 }
                     },
@@ -754,7 +760,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     tooltip: {
                         callbacks: {
-                            label: ctx => `${ctx.label}: R$ ${ctx.parsed.toFixed(2)} (${((ctx.parsed/total)*100).toFixed(1)}%)`
+                            label: ctx => `${ctx.label}: ${formatCurrencyDetailed(ctx.parsed)} (${((ctx.parsed/total)*100).toFixed(1)}%)`
                         }
                     },
                     datalabels: {
@@ -762,7 +768,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         font: { weight: 'bold' },
                         formatter: v => {
                             const val = getNumberValue(v);
-                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
+                            return val > 0 ? formatCurrencyDetailed(val) : '';
                         }
                     }
                 }
@@ -812,7 +818,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     tooltip: {
                         callbacks: {
-                            label: ctx => `${ctx.dataset.label}: R$ ${ctx.parsed.y.toFixed(2)}`
+                            label: ctx => `${ctx.dataset.label}: ${formatCurrencyDetailed(ctx.parsed.y)}`
                         }
                     },
                     datalabels: {
@@ -820,7 +826,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         anchor: 'end', align: 'top', font: { weight: 'bold' },
                         formatter: v => {
                             const val = getNumberValue(v);
-                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
+                            return val > 0 ? formatCurrencyDetailed(val) : '';
                         }
                     }
                 },
@@ -870,7 +876,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: ctx => `R$ ${ctx.parsed.x.toFixed(2)}`
+                            label: ctx => formatCurrencyDetailed(ctx.parsed.x)
                         }
                     },
                     datalabels: {
@@ -878,7 +884,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         anchor: 'end', align: 'right', font: { weight: 'bold' },
                         formatter: v => {
                             const val = getNumberValue(v);
-                            return val > 0 ? `R$ ${val.toFixed(2)}` : '';
+                            return val > 0 ? formatCurrencyDetailed(val) : '';
                         }
                     }
                 }
@@ -896,8 +902,33 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!response.ok) { const err = await response.json(); throw new Error(err.message); }
             addExpenseForm.reset();
             toggleExpenseFields();
-            fetchAllData();
-        } catch (error) { alert(`Erro: ${error.message}`); }
+            
+            // Recarregar todos os dados
+            await fetchAllData();
+            
+            // Verificar se precisa atualizar PIX/Boleto
+            const account = formData.get('account');
+            if (account === 'PIX' || account === 'Boleto') {
+                // Se está na aba PIX/Boleto, recarregar os dados
+                const activeTab = document.querySelector('.tab-button.active');
+                if (activeTab && activeTab.dataset.tab === 'pix-boleto') {
+                    await loadPixBoletoData();
+                }
+            }
+            
+            // Verificar se precisa atualizar análise empresarial
+            if (formData.get('is_business_expense') === 'true') {
+                const activeTab = document.querySelector('.tab-button.active');
+                if (activeTab && activeTab.dataset.tab === 'business-analysis') {
+                    await loadBusinessAnalysis();
+                }
+            }
+            
+            showToast('Gasto adicionado com sucesso!', 'success');
+        } catch (error) { 
+            console.error('Erro ao adicionar gasto:', error);
+            showToast(`Erro: ${error.message}`, 'error'); 
+        }
     }
 
     function handleTableClick(e) {
@@ -909,8 +940,25 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const response = await fetch(`${API_BASE_URL}/api/expenses/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
             if (!response.ok) throw new Error('Falha ao apagar despesa.');
-            fetchAllData();
-        } catch (error) { alert(`Erro: ${error.message}`); }
+            
+            // Recarregar todos os dados
+            await fetchAllData();
+            
+            // Recarregar dados específicos da aba ativa
+            const activeTab = document.querySelector('.tab-button.active');
+            if (activeTab) {
+                if (activeTab.dataset.tab === 'pix-boleto') {
+                    await loadPixBoletoData();
+                } else if (activeTab.dataset.tab === 'business-analysis') {
+                    await loadBusinessAnalysis();
+                }
+            }
+            
+            showToast('Gasto removido com sucesso!', 'success');
+        } catch (error) { 
+            console.error('Erro ao deletar gasto:', error);
+            showToast(`Erro: ${error.message}`, 'error'); 
+        }
     }
 
     async function handleWeeklyReportDownload() {
@@ -1210,13 +1258,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: ctx => `R$ ${ctx.parsed.y.toFixed(2)}`
+                            label: ctx => formatCurrencyDetailed(ctx.parsed.y)
                         }
                     },
                     datalabels: {
                         color: '#222',
                         anchor: 'end', align: 'top', font: { weight: 'bold' },
-                        formatter: v => typeof v === 'number' ? `R$ ${v.toFixed(2)}` : ''
+                        formatter: v => typeof v === 'number' ? formatCurrencyDetailed(v) : ''
                     }
                 },
                 onClick: (evt, elements) => {
@@ -1237,7 +1285,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let total = filtered.reduce((sum, e) => sum + parseFloat(e.amount), 0);
         let html = `<div class="mb-2 font-bold text-lg flex items-center justify-between">
             <span>Detalhes do Plano <span class='text-blue-600'>${plano}</span> (${period})</span>
-            <span class='bg-blue-100 text-blue-800 px-3 py-1 rounded font-mono'>Total: R$ ${total.toFixed(2)}</span>
+            <span class='bg-blue-100 text-blue-800 px-3 py-1 rounded font-mono'>Total: ${formatCurrencyDetailed(total)}</span>
             <button id="ir-export-csv" class="bg-green-500 text-white px-3 py-1 rounded ml-4"><i class="fa fa-file-csv"></i> Exportar CSV</button>
         </div>`;
         if (filtered.length === 0) {
@@ -1247,7 +1295,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         html += `<div style="max-height:320px;overflow:auto;"><table class="table table-sm table-bordered align-middle"><thead class='sticky-top bg-white'><tr><th>Data</th><th>Descrição</th><th class='text-end'>Valor</th><th>Conta</th><th>Tipo</th></tr></thead><tbody>`;
         filtered.forEach(e => {
-            html += `<tr><td>${new Date(e.transaction_date).toLocaleDateString('pt-BR')}</td><td>${e.description}</td><td class='text-end'>R$ ${parseFloat(e.amount).toFixed(2)}</td><td>${e.account}</td><td>${e.is_business_expense ? 'Empresarial' : 'Pessoal'}</td></tr>`;
+            html += `<tr><td>${new Date(e.transaction_date).toLocaleDateString('pt-BR')}</td><td>${e.description}</td><td class='text-end'>${formatCurrencyDetailed(parseFloat(e.amount))}</td><td>${e.account}</td><td>${e.is_business_expense ? 'Empresarial' : 'Pessoal'}</td></tr>`;
         });
         html += '</tbody></table></div>';
         irDetails.innerHTML = html;
@@ -1399,7 +1447,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <tr>
                             <td>${day}</td>
                             <td>${groupedByDay[day].map(expense => expense.description).join(', ')}</td>
-                            <td>R$ ${groupedByDay[day].reduce((sum, expense) => sum + parseFloat(expense.amount), 0).toFixed(2)}</td>
+                            <td>${formatCurrencyDetailed(groupedByDay[day].reduce((sum, expense) => sum + parseFloat(expense.amount), 0))}</td>
                             <td>${groupedByDay[day][0].account}</td>
                         </tr>
                     `).join('')}
@@ -1612,6 +1660,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
             showNotification(result.message, 'success');
             await fetchAllData(); // Recarregar dados do dashboard
+            
+            // Recarregar dados específicos da aba ativa
+            const activeTab = document.querySelector('.tab-button.active');
+            if (activeTab) {
+                if (activeTab.dataset.tab === 'pix-boleto') {
+                    await loadPixBoletoData();
+                } else if (activeTab.dataset.tab === 'business-analysis') {
+                    await loadBusinessAnalysis();
+                }
+            }
         } catch (error) {
             console.error('Erro ao processar gastos recorrentes:', error);
             showNotification('Erro ao processar gastos recorrentes', 'error');
@@ -1673,19 +1731,34 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!token) return;
 
             const year = pixBoletoYear?.value || new Date().getFullYear();
-            const month = pixBoletoMonth?.value || (new Date().getMonth() + 1);
+            const month = pixBoletoMonth?.value || '';
             const type = pixBoletoType?.value || '';
             const search = pixBoletoSearch?.value || '';
 
-            // Buscar dados PIX
-            const pixData = await fetch(`${API_BASE_URL}/api/expenses?account=PIX&year=${year}&month=${month}&include_recurring=true`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(res => res.json());
+            // Construir parâmetros de busca
+            let pixParams = `account=PIX&year=${year}&include_recurring=true`;
+            let boletoParams = `account=Boleto&year=${year}&include_recurring=true`;
+            
+            if (month) {
+                pixParams += `&month=${month}`;
+                boletoParams += `&month=${month}`;
+            }
 
-            // Buscar dados Boleto
-            const boletoData = await fetch(`${API_BASE_URL}/api/expenses?account=Boleto&year=${year}&month=${month}&include_recurring=true`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(res => res.json());
+            // Buscar dados baseados no filtro de tipo
+            let pixData = [];
+            let boletoData = [];
+
+            if (type === '' || type === 'PIX') {
+                pixData = await fetch(`${API_BASE_URL}/api/expenses?${pixParams}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).then(res => res.json()).catch(() => []);
+            }
+
+            if (type === '' || type === 'Boleto') {
+                boletoData = await fetch(`${API_BASE_URL}/api/expenses?${boletoParams}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).then(res => res.json()).catch(() => []);
+            }
 
             // Filtrar por busca se necessário
             const filteredPix = search ? pixData.filter(expense => 
@@ -1710,6 +1783,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Erro ao carregar dados PIX/Boleto:', error);
+            showToast('Erro ao carregar dados PIX/Boleto', 'error');
         }
     }
 
@@ -1719,10 +1793,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalTransactions = pixData.length + boletoData.length;
         const grandTotal = pixTotalValue + boletoTotalValue;
 
-        if (pixTotal) pixTotal.textContent = formatCurrency(pixTotalValue);
-        if (boletoTotal) boletoTotal.textContent = formatCurrency(boletoTotalValue);
+        if (pixTotal) pixTotal.textContent = formatCurrencyDetailed(pixTotalValue);
+        if (boletoTotal) boletoTotal.textContent = formatCurrencyDetailed(boletoTotalValue);
         if (pixBoletoTransactions) pixBoletoTransactions.textContent = totalTransactions;
-        if (pixBoletoGrandTotal) pixBoletoGrandTotal.textContent = formatCurrency(grandTotal);
+        if (pixBoletoGrandTotal) pixBoletoGrandTotal.textContent = formatCurrencyDetailed(grandTotal);
     }
 
     function updatePixBoletoTables(pixData, boletoData) {
@@ -1735,7 +1809,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.innerHTML = `
                     <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
                     <td class="p-3">${expense.description}</td>
-                    <td class="p-3 font-semibold text-green-600">${formatCurrency(parseFloat(expense.amount))}</td>
+                    <td class="p-3 font-semibold text-green-600">${formatCurrencyDetailed(parseFloat(expense.amount))}</td>
                     <td class="p-3">${expense.is_business_expense ? 'Empresarial' : 'Pessoal'}</td>
                     <td class="p-3">${expense.account_plan_code || '-'}</td>
                     <td class="p-3">${expense.is_recurring_expense ? '<span class="recurring-badge">Recorrente</span>' : '-'}</td>
@@ -1753,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.innerHTML = `
                     <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
                     <td class="p-3">${expense.description}</td>
-                    <td class="p-3 font-semibold text-blue-600">R$ ${parseFloat(expense.amount).toFixed(2)}</td>
+                    <td class="p-3 font-semibold text-blue-600">${formatCurrencyDetailed(parseFloat(expense.amount))}</td>
                     <td class="p-3">${expense.is_business_expense ? 'Empresarial' : 'Pessoal'}</td>
                     <td class="p-3">${expense.account_plan_code || '-'}</td>
                     <td class="p-3">${expense.is_recurring_expense ? '<span class="recurring-badge">Recorrente</span>' : '-'}</td>
@@ -1778,7 +1852,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 div.className = 'flex justify-between items-center p-2 bg-green-50 rounded';
                 div.innerHTML = `
                     <span class="font-medium">Plano ${plan}:</span>
-                    <span class="font-bold text-green-600">R$ ${total.toFixed(2)}</span>
+                    <span class="font-bold text-green-600">${formatCurrencyDetailed(total)}</span>
                 `;
                 pixCategorySummary.appendChild(div);
             });
@@ -1798,7 +1872,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 div.className = 'flex justify-between items-center p-2 bg-blue-50 rounded';
                 div.innerHTML = `
                     <span class="font-medium">Plano ${plan}:</span>
-                    <span class="font-bold text-blue-600">R$ ${total.toFixed(2)}</span>
+                    <span class="font-bold text-blue-600">${formatCurrencyDetailed(total)}</span>
                 `;
                 boletoCategorySummary.appendChild(div);
             });
@@ -1806,13 +1880,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updatePixBoletoCharts(pixData, boletoData) {
+        // Destruir gráficos existentes
+        if (window.pixBoletoComparisonChart) {
+            window.pixBoletoComparisonChart.destroy();
+        }
+        if (window.pixBoletoEvolutionChart) {
+            window.pixBoletoEvolutionChart.destroy();
+        }
+
         // Gráfico de comparação PIX vs Boleto
         const comparisonCtx = document.getElementById('pix-boleto-comparison-chart')?.getContext('2d');
         if (comparisonCtx) {
             const pixTotal = pixData.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
             const boletoTotal = boletoData.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
 
-            new Chart(comparisonCtx, {
+            window.pixBoletoComparisonChart = new Chart(comparisonCtx, {
                 type: 'doughnut',
                 data: {
                     labels: ['PIX', 'Boleto'],
@@ -1826,7 +1908,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 options: {
                     responsive: true,
                     plugins: {
-                        legend: { position: 'bottom' }
+                        legend: { 
+                            position: 'bottom',
+                            labels: { color: '#000000' }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = pixTotal + boletoTotal;
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${formatCurrencyDetailed(value)} (${percentage}%)`;
+                                }
+                            }
+                        }
                     }
                 }
             });
@@ -1835,43 +1931,99 @@ document.addEventListener('DOMContentLoaded', function() {
         // Gráfico de evolução mensal (últimos 6 meses)
         const evolutionCtx = document.getElementById('pix-boleto-evolution-chart')?.getContext('2d');
         if (evolutionCtx) {
-            // Implementar lógica para últimos 6 meses
-            const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'];
-            const pixValues = [100, 150, 200, 180, 220, 250]; // Dados de exemplo
-            const boletoValues = [80, 90, 120, 110, 130, 140]; // Dados de exemplo
-
-            new Chart(evolutionCtx, {
+            // Calcular dados dos últimos 6 meses
+            const monthlyData = calculateMonthlyPixBoletoData([...pixData, ...boletoData]);
+            
+            window.pixBoletoEvolutionChart = new Chart(evolutionCtx, {
                 type: 'line',
                 data: {
-                    labels: months,
+                    labels: monthlyData.labels,
                     datasets: [
                         {
                             label: 'PIX',
-                            data: pixValues,
+                            data: monthlyData.pixValues,
                             borderColor: '#22c55e',
                             backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                            tension: 0.4
+                            tension: 0.4,
+                            fill: false
                         },
                         {
                             label: 'Boleto',
-                            data: boletoValues,
+                            data: monthlyData.boletoValues,
                             borderColor: '#3b82f6',
                             backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            tension: 0.4
+                            tension: 0.4,
+                            fill: false
                         }
                     ]
                 },
                 options: {
                     responsive: true,
                     plugins: {
-                        legend: { position: 'top' }
+                        legend: { 
+                            position: 'top',
+                            labels: { color: '#000000' }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${formatCurrencyDetailed(context.parsed.y)}`;
+                                }
+                            }
+                        }
                     },
                     scales: {
-                        y: { beginAtZero: true }
+                        y: { 
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#000000',
+                                callback: function(value) {
+                                    return formatCurrencyDetailed(value);
+                                }
+                            }
+                        },
+                        x: {
+                            ticks: { color: '#000000' }
+                        }
                     }
                 }
             });
         }
+    }
+
+    function calculateMonthlyPixBoletoData(allData) {
+        const currentDate = new Date();
+        const monthlyTotals = { pix: {}, boleto: {} };
+        const labels = [];
+
+        // Gerar labels dos últimos 6 meses
+        for (let i = 5; i >= 0; i--) {
+            const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+            const label = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            labels.push(label);
+            monthlyTotals.pix[key] = 0;
+            monthlyTotals.boleto[key] = 0;
+        }
+
+        // Agrupar dados por mês
+        allData.forEach(expense => {
+            const date = new Date(expense.transaction_date);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            const amount = parseFloat(expense.amount);
+            
+            if (expense.account === 'PIX' && monthlyTotals.pix[key] !== undefined) {
+                monthlyTotals.pix[key] += amount;
+            } else if (expense.account === 'Boleto' && monthlyTotals.boleto[key] !== undefined) {
+                monthlyTotals.boleto[key] += amount;
+            }
+        });
+
+        return {
+            labels: labels,
+            pixValues: Object.values(monthlyTotals.pix),
+            boletoValues: Object.values(monthlyTotals.boleto)
+        };
     }
 
     function initializePixBoletoFilters() {
@@ -1967,7 +2119,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Outros filtros
-        [businessAccountSelect, businessInvoiceFilter, billingYearSelect, billingMonthSelect].forEach(el => {
+        [businessAccountSelect, businessInvoiceFilter, billingYearSelect, billingMonthSelect, billingAccountSelect].forEach(el => {
             if (el) el.addEventListener('change', loadBusinessAnalysis);
         });
 
@@ -2078,15 +2230,25 @@ document.addEventListener('DOMContentLoaded', function() {
         const withInvoice = expenses.filter(exp => exp.has_invoice).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
         const withoutInvoice = total - withInvoice;
 
-        document.getElementById('business-total').textContent = formatCurrency(total);
-        document.getElementById('business-invoiced').textContent = formatCurrency(withInvoice);
-        document.getElementById('business-non-invoiced').textContent = formatCurrency(withoutInvoice);
+        // Formatação com separadores de milhares e cor preta
+        document.getElementById('business-total').textContent = formatCurrencyDetailed(total);
+        document.getElementById('business-total').style.color = '#000000';
+        
+        document.getElementById('business-invoiced').textContent = formatCurrencyDetailed(withInvoice);
+        document.getElementById('business-invoiced').style.color = '#000000';
+        
+        document.getElementById('business-non-invoiced').textContent = formatCurrencyDetailed(withoutInvoice);
+        document.getElementById('business-non-invoiced').style.color = '#000000';
 
         // Calcular crescimento mensal (comparação com mês anterior)
         calculateMonthlyGrowth(expenses);
 
         // Atualizar estatísticas da tabela filtrada
         updateFilteredStatistics(expenses);
+
+        // Atualizar gastos por conta e por fatura
+        updateBusinessByAccount(expenses);
+        updateBusinessByBilling(expenses);
     }
 
     // Calcular crescimento mensal
@@ -2142,10 +2304,200 @@ document.addEventListener('DOMContentLoaded', function() {
         const withInvoiceCount = expenses.filter(exp => exp.has_invoice).length;
         const invoicePercentage = count > 0 ? (withInvoiceCount / count) * 100 : 0;
 
-        document.getElementById('filtered-total').textContent = formatCurrency(total);
-        document.getElementById('filtered-count').textContent = count;
-        document.getElementById('filtered-average').textContent = formatCurrency(average);
+        // Formatação com separadores de milhares e cor preta
+        document.getElementById('filtered-total').textContent = formatCurrencyDetailed(total);
+        document.getElementById('filtered-total').style.color = '#000000';
+        
+        document.getElementById('filtered-count').textContent = count.toLocaleString('pt-BR');
+        document.getElementById('filtered-count').style.color = '#000000';
+        
+        document.getElementById('filtered-average').textContent = formatCurrencyDetailed(average);
+        document.getElementById('filtered-average').style.color = '#000000';
+        
         document.getElementById('filtered-invoice-percentage').textContent = `${invoicePercentage.toFixed(1)}%`;
+        document.getElementById('filtered-invoice-percentage').style.color = '#000000';
+    }
+
+    // Atualizar gastos por conta
+    function updateBusinessByAccount(expenses) {
+        const accountData = {};
+        
+        expenses.forEach(expense => {
+            const account = expense.account;
+            if (!accountData[account]) {
+                accountData[account] = {
+                    total: 0,
+                    count: 0,
+                    withInvoice: 0,
+                    withoutInvoice: 0
+                };
+            }
+            
+            const amount = parseFloat(expense.amount);
+            accountData[account].total += amount;
+            accountData[account].count += 1;
+            
+            if (expense.has_invoice) {
+                accountData[account].withInvoice += amount;
+            } else {
+                accountData[account].withoutInvoice += amount;
+            }
+        });
+
+        // Renderizar resumo por conta
+        const accountSummaryContainer = document.getElementById('business-account-summary');
+        if (accountSummaryContainer) {
+            accountSummaryContainer.innerHTML = '';
+            
+            Object.entries(accountData).forEach(([account, data]) => {
+                const accountDiv = document.createElement('div');
+                accountDiv.className = 'bg-white p-4 rounded-lg shadow-sm border';
+                accountDiv.innerHTML = `
+                    <h4 class="font-semibold text-lg mb-2" style="color: #000000;">${account}</h4>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                            <span class="text-gray-600">Total:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${formatCurrencyDetailed(data.total)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Transações:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${data.count.toLocaleString('pt-BR')}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Com NF:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${formatCurrencyDetailed(data.withInvoice)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Sem NF:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${formatCurrencyDetailed(data.withoutInvoice)}</span>
+                        </div>
+                    </div>
+                `;
+                accountSummaryContainer.appendChild(accountDiv);
+            });
+        }
+    }
+
+    // Atualizar gastos por período de fatura
+    function updateBusinessByBilling(expenses) {
+        const billingPeriods = {
+            'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
+            'Nu Vainer': { startDay: 2, endDay: 1 },
+            'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
+            'PicPay Vainer': { startDay: 1, endDay: 30 },
+            'Ducatto': { startDay: 1, endDay: 30 },
+            'Master': { startDay: 1, endDay: 30 }
+        };
+
+        const today = new Date();
+        const billingData = {};
+
+        // Para cada conta que tem período de fatura definido
+        Object.keys(billingPeriods).forEach(account => {
+            const period = billingPeriods[account];
+            let startDate, endDate;
+
+            if (account === 'Nu Bank Ketlyn' || account === 'Nu Vainer') {
+                // Para Nu Bank: fatura atual é do dia 2 do mês passado até dia 1 do mês atual
+                startDate = new Date(today.getFullYear(), today.getMonth() - 1, period.startDay);
+                endDate = new Date(today.getFullYear(), today.getMonth(), period.endDay);
+            } else {
+                // Para outras contas: período do mês anterior
+                startDate = new Date(today.getFullYear(), today.getMonth() - 1, period.startDay);
+                endDate = new Date(today.getFullYear(), today.getMonth() - 1, period.endDay);
+                
+                // Se endDay < startDay, o período vai para o próximo mês
+                if (period.endDay < period.startDay) {
+                    endDate = new Date(today.getFullYear(), today.getMonth(), period.endDay);
+                }
+            }
+
+            // Filtrar gastos desta conta no período vigente
+            const accountExpenses = expenses.filter(expense => {
+                if (expense.account !== account) return false;
+                
+                const expenseDate = new Date(expense.transaction_date);
+                return expenseDate >= startDate && expenseDate <= endDate;
+            });
+
+            if (accountExpenses.length > 0) {
+                const total = accountExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+                const withInvoice = accountExpenses.filter(exp => exp.has_invoice).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+                
+                billingData[account] = {
+                    total: total,
+                    count: accountExpenses.length,
+                    withInvoice: withInvoice,
+                    withoutInvoice: total - withInvoice,
+                    period: `${startDate.toLocaleDateString('pt-BR')} - ${endDate.toLocaleDateString('pt-BR')}`
+                };
+            }
+        });
+
+        // Renderizar resumo por fatura
+        const billingSummaryContainer = document.getElementById('business-billing-summary');
+        if (billingSummaryContainer) {
+            billingSummaryContainer.innerHTML = '';
+            
+            if (Object.keys(billingData).length === 0) {
+                billingSummaryContainer.innerHTML = '<div class="text-gray-500 text-center p-4">Nenhum gasto no período vigente de fatura encontrado.</div>';
+                return;
+            }
+
+            Object.entries(billingData).forEach(([account, data]) => {
+                const billingDiv = document.createElement('div');
+                billingDiv.className = 'bg-blue-50 p-4 rounded-lg shadow-sm border border-blue-200';
+                billingDiv.innerHTML = `
+                    <h4 class="font-semibold text-lg mb-2" style="color: #000000;">${account}</h4>
+                    <p class="text-xs text-gray-600 mb-3">Período vigente: ${data.period}</p>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                            <span class="text-gray-600">Total da Fatura:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${formatCurrencyDetailed(data.total)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Transações:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${data.count.toLocaleString('pt-BR')}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Com NF:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${formatCurrencyDetailed(data.withInvoice)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Sem NF:</span>
+                            <span class="font-bold ml-2" style="color: #000000;">${formatCurrencyDetailed(data.withoutInvoice)}</span>
+                        </div>
+                    </div>
+                `;
+                billingSummaryContainer.appendChild(billingDiv);
+            });
+
+            // Adicionar total geral das faturas
+            const totalBilling = Object.values(billingData).reduce((sum, data) => sum + data.total, 0);
+            const totalWithInvoice = Object.values(billingData).reduce((sum, data) => sum + data.withInvoice, 0);
+            const totalWithoutInvoice = totalBilling - totalWithInvoice;
+
+            const totalDiv = document.createElement('div');
+            totalDiv.className = 'bg-gray-100 p-4 rounded-lg shadow-sm border-2 border-gray-300 mt-4';
+            totalDiv.innerHTML = `
+                <h4 class="font-bold text-xl mb-2" style="color: #000000;">Total de Todas as Faturas</h4>
+                <div class="grid grid-cols-3 gap-4 text-lg">
+                    <div class="text-center">
+                        <span class="text-gray-600 block">Total:</span>
+                        <span class="font-bold text-2xl" style="color: #000000;">${formatCurrencyDetailed(totalBilling)}</span>
+                    </div>
+                    <div class="text-center">
+                        <span class="text-gray-600 block">Com NF:</span>
+                        <span class="font-bold text-2xl" style="color: #000000;">${formatCurrencyDetailed(totalWithInvoice)}</span>
+                    </div>
+                    <div class="text-center">
+                        <span class="text-gray-600 block">Sem NF:</span>
+                        <span class="font-bold text-2xl" style="color: #000000;">${formatCurrencyDetailed(totalWithoutInvoice)}</span>
+                    </div>
+                </div>
+            `;
+            billingSummaryContainer.appendChild(totalDiv);
+        }
     }
 
     // Renderizar gráficos empresariais
@@ -2256,15 +2608,28 @@ document.addEventListener('DOMContentLoaded', function() {
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { display: false }
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return formatCurrencyDetailed(context.parsed.y);
+                            }
+                        }
+                    }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
                         ticks: {
+                            color: '#000000',
                             callback: function(value) {
-                                return formatCurrency(value);
+                                return formatCurrencyDetailed(value);
                             }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#000000'
                         }
                     }
                 }
@@ -2316,7 +2681,21 @@ document.addEventListener('DOMContentLoaded', function() {
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { position: 'bottom' }
+                    legend: { 
+                        position: 'bottom',
+                        labels: {
+                            color: '#000000'
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                return `${label}: R$ ${value.toFixed(2)}`;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -2366,15 +2745,28 @@ document.addEventListener('DOMContentLoaded', function() {
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { display: false }
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return formatCurrencyDetailed(context.parsed.y);
+                            }
+                        }
+                    }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
                         ticks: {
+                            color: '#000000',
                             callback: function(value) {
-                                return formatCurrency(value);
+                                return formatCurrencyDetailed(value);
                             }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#000000'
                         }
                     }
                 }
@@ -2422,7 +2814,21 @@ document.addEventListener('DOMContentLoaded', function() {
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { position: 'bottom' }
+                    legend: { 
+                        position: 'bottom',
+                        labels: {
+                            color: '#000000'
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                return `${label}: R$ ${value.toFixed(2)}`;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -2487,28 +2893,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 businessCharts.quarterly = new Chart(ctx, {
                     type: 'bar',
                     data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Gastos Trimestrais',
-                            data: data,
-                            backgroundColor: '#8b5cf6'
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { display: false }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
-                                        return formatCurrency(value);
-                                    }
+                        labels: labels,                    datasets: [{
+                        label: 'Gastos Trimestrais',
+                        data: data,
+                        backgroundColor: '#8b5cf6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return formatCurrencyDetailed(context.parsed.y);
                                 }
                             }
                         }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#000000',
+                                callback: function(value) {
+                                    return formatCurrencyDetailed(value);
+                                }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#000000'
+                            }
+                        }
+                    }
                     }
                 });
             }
@@ -2549,15 +2967,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 options: {
                     responsive: true,
                     plugins: {
-                        legend: { display: false }
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return formatCurrencyDetailed(context.parsed.y);
+                                }
+                            }
+                        }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
                             ticks: {
+                                color: '#000000',
                                 callback: function(value) {
-                                    return formatCurrency(value);
+                                    return `R$ ${value.toFixed(2)}`;
                                 }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#000000'
                             }
                         }
                     }
@@ -2650,15 +3081,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     options: {
                         responsive: true,
                         plugins: {
-                            legend: { display: false }
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return formatCurrencyDetailed(context.parsed.y);
+                                    }
+                                }
+                            }
                         },
                         scales: {
                             y: {
                                 beginAtZero: true,
                                 ticks: {
+                                    color: '#000000',
                                     callback: function(value) {
-                                        return formatCurrency(value);
+                                        return formatCurrencyDetailed(value);
                                     }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: '#000000'
                                 }
                             }
                         }
@@ -2755,20 +3199,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const invoiceFile = expense.invoice_path || expense.invoice_file;
             
             row.innerHTML = `
-                <td class="p-3">${formatDate(expense.transaction_date)}</td>
-                <td class="p-3 max-w-xs truncate" title="${expense.description}">${expense.description}</td>
-                <td class="p-3 font-semibold text-blue-600">${formatCurrency(expense.amount)}</td>
-                <td class="p-3">
-                    <span class="px-2 py-1 bg-gray-100 rounded text-sm">${expense.account}</span>
+                <td class="p-3" style="color: #000000;">${formatDate(expense.transaction_date)}</td>
+                <td class="p-3 max-w-xs truncate" style="color: #000000;" title="${expense.description}">${expense.description}</td>
+                <td class="p-3 font-semibold text-blue-600" style="color: #000000;">${formatCurrencyDetailed(parseFloat(expense.amount))}</td>
+                <td class="p-3" style="color: #000000;">
+                    <span class="px-2 py-1 bg-gray-100 rounded text-sm" style="color: #000000;">${expense.account}</span>
                 </td>
-                <td class="p-3">${expense.account_plan_code || 'N/A'}</td>
+                <td class="p-3" style="color: #000000;">${expense.account_plan_code || 'N/A'}</td>
                 <td class="p-3">
-                    <span class="${hasInvoice ? 'invoice-status-yes' : 'invoice-status-no'}">
+                    <span class="${hasInvoice ? 'invoice-status-yes' : 'invoice-status-no'}" style="color: #000000;">
                         ${hasInvoice ? '✅ Sim' : '❌ Não'}
                     </span>
                 </td>
                 <td class="p-3">
-                    <span class="billing-period-badge">${billingPeriod}</span>
+                    <span class="billing-period-badge" style="color: #000000;">${billingPeriod}</span>
                 </td>
                 <td class="p-3">
                     <div class="flex gap-2">
@@ -2852,6 +3296,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function loadBillingPeriodAnalysis() {
         const year = billingYearSelect.value;
         const month = billingMonthSelect.value;
+        const account = billingAccountSelect.value;
         
         if (!year) {
             showToast('Selecione um ano', 'warning');
@@ -2859,7 +3304,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            // Buscar gastos empresariais para o ano/mês selecionado
+            // Buscar gastos empresariais para o ano/mês/conta selecionado
             const params = new URLSearchParams({
                 is_business: 'true',
                 year: year
@@ -2867,6 +3312,10 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (month) {
                 params.append('month', month);
+            }
+
+            if (account) {
+                params.append('account', account);
             }
 
             const response = await fetch(`${API_BASE_URL}/api/expenses?${params}`, {
@@ -2878,6 +3327,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Filtrar gastos empresariais
             let businessExpenses = allExpenses.filter(expense => expense.is_business_expense);
+            
+            // Filtrar por conta específica se selecionada
+            if (account) {
+                businessExpenses = businessExpenses.filter(expense => expense.account === account);
+            }
             
             // Se mês específico foi selecionado, filtrar por período de fatura
             if (month) {
@@ -2891,8 +3345,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Mostrar resumo do período
-            showBillingSummary(businessExpenses);
-            renderBillingPeriodChart(businessExpenses);
+            showBillingSummary(businessExpenses, account);
+            renderBillingPeriodChart(businessExpenses, account);
             
         } catch (error) {
             console.error('Erro ao carregar análise de fatura:', error);
@@ -2901,7 +3355,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Mostrar resumo do período de fatura
-    function showBillingSummary(expenses) {
+    function showBillingSummary(expenses, selectedAccount = '') {
         billingSummary.classList.remove('hidden');
         
         const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
@@ -2909,16 +3363,40 @@ document.addEventListener('DOMContentLoaded', function() {
         const average = count > 0 ? total / count : 0;
         const maxExpense = expenses.length > 0 ? Math.max(...expenses.map(exp => parseFloat(exp.amount))) : 0;
 
-        document.getElementById('billing-period-total').textContent = formatCurrency(total);
-        document.getElementById('billing-period-count').textContent = count;
-        document.getElementById('billing-period-avg').textContent = formatCurrency(average);
-        document.getElementById('billing-period-max').textContent = formatCurrency(maxExpense);
+        // Formatação com separadores de milhares e cor preta
+        document.getElementById('billing-period-total').textContent = formatCurrencyDetailed(total);
+        document.getElementById('billing-period-total').style.color = '#000000';
+        
+        document.getElementById('billing-period-count').textContent = count.toLocaleString('pt-BR');
+        document.getElementById('billing-period-count').style.color = '#000000';
+        
+        document.getElementById('billing-period-avg').textContent = formatCurrencyDetailed(average);
+        document.getElementById('billing-period-avg').style.color = '#000000';
+        
+        document.getElementById('billing-period-max').textContent = formatCurrencyDetailed(maxExpense);
+        document.getElementById('billing-period-max').style.color = '#000000';
+
+        // Atualizar título do resumo com conta selecionada
+        const summaryTitle = selectedAccount ? 
+            `Resumo para ${selectedAccount}` : 
+            'Resumo Geral';
+        
+        // Adicionar indicador visual da conta filtrada
+        const existingTitle = document.querySelector('#billing-summary h4');
+        if (existingTitle) {
+            existingTitle.textContent = summaryTitle;
+        }
     }
 
     // Renderizar gráfico do período de fatura
-    function renderBillingPeriodChart(expenses) {
+    function renderBillingPeriodChart(expenses, selectedAccount = '') {
         const ctx = document.getElementById('billing-period-chart');
         if (!ctx) return;
+
+        // Destruir gráfico existente se houver
+        if (businessCharts.billingPeriod) {
+            businessCharts.billingPeriod.destroy();
+        }
 
         // Agrupar por dia
         const dailyData = {};
@@ -2930,28 +3408,50 @@ document.addEventListener('DOMContentLoaded', function() {
         const labels = Object.keys(dailyData).sort();
         const data = labels.map(label => dailyData[label]);
 
+        const chartTitle = selectedAccount ? 
+            `Gastos Diários - ${selectedAccount}` : 
+            'Gastos Diários - Todas as Contas';
+
         businessCharts.billingPeriod = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Gastos Diários',
+                    label: chartTitle,
                     data: data,
-                    backgroundColor: '#3b82f6'
+                    backgroundColor: selectedAccount ? '#10b981' : '#3b82f6'
                 }]
             },
             options: {
                 responsive: true,
                 plugins: {
-                    legend: { display: false }
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return formatCurrencyDetailed(context.parsed.y);
+                            }
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: chartTitle,
+                        color: '#000000'
+                    }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
                         ticks: {
+                            color: '#000000',
                             callback: function(value) {
-                                return formatCurrency(value);
+                                return formatCurrencyDetailed(value);
                             }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#000000'
                         }
                     }
                 }

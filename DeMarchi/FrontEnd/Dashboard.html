@@ -567,6 +567,28 @@
                     </div>
                 </div>
 
+                <!-- Resumo por Conta e Fatura -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Resumo por Conta -->
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">🏦 Gastos por Conta</h3>
+                        <div id="business-account-summary" class="space-y-4">
+                            <!-- Container será preenchido dinamicamente pelo JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Resumo por Período de Fatura -->
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">🧾 Gastos por Período de Fatura</h3>
+                        <p class="text-sm text-gray-600 mb-4">
+                            * Fatura do mês atual refere-se ao período vigente do mês passado
+                        </p>
+                        <div id="business-billing-summary" class="space-y-4">
+                            <!-- Container será preenchido dinamicamente pelo JavaScript -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Análise por Fatura/Período -->
                 <div class="bg-white p-6 rounded-lg shadow-md mb-8">
                     <h3 class="text-xl font-semibold text-gray-700 mb-4">📅 Análise por Período de Fatura</h3>
@@ -575,7 +597,7 @@
                     </p>
                     
                     <!-- Seletor de Período de Fatura -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div>
                             <label class="block text-sm font-medium">Ano de Referência</label>
                             <select id="billing-year" class="mt-1 block w-full p-2 border rounded-lg">
@@ -598,6 +620,20 @@
                                 <option value="10">Outubro</option>
                                 <option value="11">Novembro</option>
                                 <option value="12">Dezembro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">Conta Específica</label>
+                            <select id="billing-account" class="mt-1 block w-full p-2 border rounded-lg">
+                                <option value="">Todas as Contas</option>
+                                <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
+                                <option value="Nu Vainer">Nu Vainer</option>
+                                <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
+                                <option value="PicPay Vainer">PicPay Vainer</option>
+                                <option value="Ducatto">Ducatto</option>
+                                <option value="Master">Master</option>
+                                <option value="PIX">PIX</option>
+                                <option value="Boleto">Boleto</option>
                             </select>
                         </div>
                         <div class="flex items-end">
