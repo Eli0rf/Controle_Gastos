@@ -6,10 +6,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Define a URL base do backend no Railway
     const API_BASE_URL = 'https://controlegastos-production.up.railway.app';
 
-    const RAILWAY_BACKEND_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
-    
-    const FILE_BASE_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
-
     const loginSection = document.getElementById('login-section');
     const dashboardContent = document.getElementById('dashboard-content');
     const loginForm = document.getElementById('login-form');
@@ -94,6 +90,112 @@ document.addEventListener('DOMContentLoaded', function() {
     let allExpensesCache = [];
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabContents = document.querySelectorAll('.tab-content');
+    
+    // Flags para controlar renderização concorrente
+    let renderingQuarterly = false;
+    let renderingProjection = false;
+    
+    // Timeouts para debounce
+    let quarterlyTimeout = null;
+    let projectionTimeout = null;
+    
+    // Flag para evitar event listeners duplicados
+    let eventListenersInitialized = false;
+    
+    // Flag para prevenir submissões duplicadas de gastos
+    let isSubmittingExpense = false;
+    
+    // Flag para prevenir submissões duplicadas de gastos recorrentes
+    let isSubmittingRecurringExpense = false;
+    
+    // Flag para evitar múltiplas inicializações do dashboard
+    let dashboardInitialized = false;
+    
+    // Debounce para fetchAllData
+    let fetchAllDataTimeout = null;
+    let isFetchingAllData = false;
+    
+    // Flag para prevenir processamento duplicado de gastos recorrentes
+    let isProcessingRecurringExpenses = false;
+
+    // ========== FUNÇÕES UTILITÁRIAS ==========
+    
+    /**
+     * Função utilitária para limpar canvas e destruir gráficos existentes
+     * @param {HTMLCanvasElement} ctx - Contexto do canvas
+     * @param {string} chartKey - Chave do gráfico no objeto businessCharts (opcional)
+     */
+    function ensureCanvasClean(ctx, chartKey = null) {
+        if (!ctx) return;
+
+        const canvasId = ctx.id || 'unknown';
+        
+        // Primeiro: destruir por referência no businessCharts se fornecida
+        if (chartKey && businessCharts[chartKey]) {
+            try {
+                console.log(`Destruindo gráfico ${chartKey} do businessCharts`);
+                businessCharts[chartKey].destroy();
+                businessCharts[chartKey] = null;
+            } catch (e) {
+                console.warn(`Erro ao destruir gráfico ${chartKey}:`, e);
+            }
+        }
+
+        // Segundo: destruir qualquer gráfico restante no canvas
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        while (attempts < maxAttempts) {
+            const existingChart = Chart.getChart(ctx);
+            if (!existingChart) {
+                break; // Não há mais gráficos no canvas
+            }
+            
+            try {
+                console.log(`Tentativa ${attempts + 1}: Destruindo gráfico ID ${existingChart.id} do canvas ${canvasId}`);
+                existingChart.destroy();
+                attempts++;
+            } catch (e) {
+                console.warn(`Erro ao destruir gráfico existente do canvas ${canvasId} (tentativa ${attempts + 1}):`, e);
+                attempts++;
+            }
+            
+            // Verificar se ainda há gráfico após destruição
+            if (Chart.getChart(ctx)) {
+                // Se ainda há gráfico, forçar limpeza do contexto
+                try {
+                    const context = ctx.getContext('2d');
+                    context.clearRect(0, 0, ctx.width, ctx.height);
+                    
+                    // Forçar reset do canvas removendo e recriando
+                    if (attempts >= 3) {
+                        const parent = ctx.parentNode;
+                        const newCanvas = document.createElement('canvas');
+                        newCanvas.id = ctx.id;
+                        newCanvas.className = ctx.className;
+                        newCanvas.style.cssText = ctx.style.cssText;
+                        parent.replaceChild(newCanvas, ctx);
+                        console.log(`Canvas ${canvasId} foi recriado para forçar limpeza`);
+                        break;
+                    }
+                } catch (e) {
+                    console.warn(`Erro ao limpar contexto do canvas ${canvasId}:`, e);
+                }
+            }
+        }
+        
+        // Verificação final após recriação se necessário
+        const currentCanvas = document.getElementById(canvasId);
+        const finalCheck = currentCanvas ? Chart.getChart(currentCanvas) : null;
+        if (finalCheck) {
+            console.error(`ERRO CRÍTICO: Canvas ${canvasId} ainda contém gráfico ID ${finalCheck.id} após limpeza forçada`);
+            try {
+                finalCheck.destroy();
+            } catch (e) {
+                console.error(`Erro na limpeza crítica final do canvas ${canvasId}:`, e);
+            }
+        }
+    }
 
     function getToken() {
         return localStorage.getItem('token');
@@ -167,6 +269,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function addEventListeners() {
+        // Prevenir adição de event listeners duplicados
+        if (eventListenersInitialized) {
+            console.log('Event listeners já inicializados. Evitando duplicação.');
+            return;
+        }
+        
+        console.log('Inicializando event listeners...');
+        
         if (loginForm) loginForm.addEventListener('submit', handleLogin);
         if (logoutButton) logoutButton.addEventListener('click', handleLogout);
         if (filterYear) filterYear.addEventListener('change', fetchAllData);
@@ -205,13 +315,20 @@ document.addEventListener('DOMContentLoaded', function() {
         if (pixBoletoYear) pixBoletoYear.addEventListener('change', loadPixBoletoData);
         if (pixBoletoMonth) pixBoletoMonth.addEventListener('change', loadPixBoletoData);
         if (pixBoletoSearch) pixBoletoSearch.addEventListener('input', loadPixBoletoData);
+        
+        // Marcar como inicializado
+        eventListenersInitialized = true;
+        console.log('Event listeners inicializados com sucesso.');
     }
 
     async function handleLogin(e) {
         e.preventDefault();
         const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
-        if (!usernameInput || !passwordInput) return alert("Erro de configuração do HTML.");
+        if (!usernameInput || !passwordInput) {
+            showNotification("Erro de configuração do HTML.", 'error');
+            return;
+        }
         try {
             const response = await fetch(`${API_BASE_URL}/api/login`, {
                 method: 'POST',
@@ -224,7 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
             localStorage.setItem('username', usernameInput.value);
             showDashboard();
         } catch (error) {
-            alert(`Erro no login: ${error.message}`);
+            showNotification(`Erro no login: ${error.message}`, 'error');
         }
     }
 
@@ -248,6 +365,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function initializeDashboard() {
+        // Prevenir múltiplas inicializações
+        if (dashboardInitialized) {
+            console.log('Dashboard já inicializado. Evitando duplicação.');
+            return;
+        }
+        
+        console.log('Inicializando dashboard...');
+        dashboardInitialized = true;
+        
         populateAccountFilter();
         populateFilterOptions();
         fetchAllData();
@@ -255,6 +381,8 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeTabs();
         initializePixBoletoFilters();
         initBusinessAnalysis();
+        
+        console.log('Dashboard inicializado com sucesso.');
     }
 
     function populateFilterOptions() {
@@ -276,9 +404,38 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function fetchAllData() {
-        await fetchAndRenderExpenses();
-        await fetchAndRenderDashboardMetrics();
-        await fetchAndRenderGoalsChart();
+        // Debounce: cancelar chamada anterior se ainda estiver pendente
+        if (fetchAllDataTimeout) {
+            clearTimeout(fetchAllDataTimeout);
+        }
+        
+        // Se já está buscando dados, ignorar nova chamada
+        if (isFetchingAllData) {
+            console.log('fetchAllData já em execução. Ignorando chamada duplicada.');
+            return;
+        }
+        
+        // Debounce de 300ms para evitar chamadas excessivas
+        return new Promise((resolve) => {
+            fetchAllDataTimeout = setTimeout(async () => {
+                isFetchingAllData = true;
+                console.log('Iniciando fetchAllData...');
+                
+                try {
+                    await fetchAndRenderExpenses();
+                    await fetchAndRenderDashboardMetrics();
+                    await fetchAndRenderGoalsChart();
+                    console.log('fetchAllData completado com sucesso');
+                } catch (error) {
+                    console.error('Erro em fetchAllData:', error);
+                } finally {
+                    isFetchingAllData = false;
+                    fetchAllDataTimeout = null;
+                }
+                
+                resolve();
+            }, 300);
+        });
     }
 
     // --- Busca tetos e renderiza gráfico de limites/alertas ---
@@ -571,7 +728,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
 
             if (projectionEl) {
-                projectionEl.textContent = `R$ ${data.projection?.nextMonthEstimate || '0.00'}`;
+                projectionEl.textContent = formatCurrencyDetailed(data.projection?.nextMonthEstimate || 0);
             }
 
             renderLineChart(data.lineChartData);
@@ -591,7 +748,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (expenses.length > 0) {
             expenses.forEach(expense => {
                 totalSpent += parseFloat(expense.amount);
-                const invoiceLink = expense.invoice_path ? `<a href="${FILE_BASE_URL}/${expense.invoice_path}" target="_blank" class="text-blue-600"><i class="fas fa-file-invoice"></i></a>` : 'N/A';
+                const invoiceLink = expense.invoice_path ? `<a href="${API_BASE_URL}/${expense.invoice_path}" target="_blank" class="text-blue-600"><i class="fas fa-file-invoice"></i></a>` : 'N/A';
                 // Corrigido: mostra plano de conta corretamente, inclusive string vazia ou null
                 let planCode = '-';
                 if (expense.account_plan_code !== null && expense.account_plan_code !== undefined && expense.account_plan_code !== '') {
@@ -852,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data: {
                 labels: data.map(d => `Plano ${d.account_plan_code}`),
                 datasets: [{
-                    label: 'Total Gasto (R$)',
+                    label: 'Total Gasto',
                     data: data.map(d => d.total),
                     backgroundColor: data.map(d => d.total === max ? '#22c55e' : 'rgba(239, 68, 68, 0.7)')
                 }]
@@ -895,11 +1052,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function handleAddExpense(e) {
         e.preventDefault();
+        
+        // Prevenir submissões duplicadas
+        if (isSubmittingExpense) {
+            console.log('Submissão já em andamento. Ignorando duplicata.');
+            showToast('Aguarde, processando gasto anterior...', 'warning');
+            return;
+        }
+        
+        isSubmittingExpense = true;
+        console.log('Iniciando submissão de gasto...');
+        
+        // Desabilitar botão de submit temporariamente
+        const submitButton = addExpenseForm.querySelector('button[type="submit"]');
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Adicionando...';
+        }
+        
         const formData = new FormData(addExpenseForm);
         formData.set('is_business_expense', businessCheckbox.checked);
+        
         try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses`, { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }, body: formData });
-            if (!response.ok) { const err = await response.json(); throw new Error(err.message); }
+            const response = await fetch(`${API_BASE_URL}/api/expenses`, { 
+                method: 'POST', 
+                headers: { 'Authorization': `Bearer ${getToken()}` }, 
+                body: formData 
+            });
+            
+            if (!response.ok) { 
+                const err = await response.json(); 
+                throw new Error(err.message); 
+            }
+            
             addExpenseForm.reset();
             toggleExpenseFields();
             
@@ -925,15 +1110,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             showToast('Gasto adicionado com sucesso!', 'success');
+            console.log('Gasto adicionado com sucesso');
+            
         } catch (error) { 
             console.error('Erro ao adicionar gasto:', error);
             showToast(`Erro: ${error.message}`, 'error'); 
+        } finally {
+            // Reabilitar botão e resetar flag
+            isSubmittingExpense = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.innerHTML = '<i class="fas fa-plus mr-2"></i>Adicionar Gasto';
+            }
+            console.log('Submissão de gasto finalizada');
         }
     }
 
     function handleTableClick(e) {
-        if (e.target.closest('.edit-btn')) alert('Funcionalidade de edição não implementada.');
-        if (e.target.closest('.delete-btn')) { if (confirm('Tem a certeza?')) deleteExpense(e.target.closest('.delete-btn').dataset.id); }
+        if (e.target.closest('.edit-btn')) showNotification('Funcionalidade de edição não implementada.', 'info');
+        if (e.target.closest('.delete-btn')) { if (confirm('Tem certeza que deseja excluir este gasto?')) deleteExpense(e.target.closest('.delete-btn').dataset.id); }
     }
 
     async function deleteExpense(id) {
@@ -1341,15 +1536,23 @@ document.addEventListener('DOMContentLoaded', function() {
         // Use o ano e mês dos filtros principais do histórico de despesas
         const filterYearEl = document.getElementById('filter-year');
         const filterMonthEl = document.getElementById('filter-month');
-        const year = filterYearEl && filterYearEl.value ? parseInt(filterYearEl.value, 10) : new Date().getFullYear();
-        const month = filterMonthEl && filterMonthEl.value ? parseInt(filterMonthEl.value, 10) : (new Date().getMonth() + 1);
+        let year = filterYearEl && filterYearEl.value ? parseInt(filterYearEl.value, 10) : new Date().getFullYear();
+        let month = filterMonthEl && filterMonthEl.value ? parseInt(filterMonthEl.value, 10) : (new Date().getMonth() + 1);
 
         // Alternativamente, se quiser usar o mês do select do quadro de fatura:
         // const month = parseInt(document.getElementById('billing-month').value, 10);
 
         if (!month) {
-            alert('Por favor, selecione um mês.');
+            showNotification('Por favor, selecione um mês.', 'error');
             return;
+        }
+
+        // IMPORTANTE: O mês selecionado é o mês de fechamento da fatura
+        // Os gastos devem ser buscados no mês ANTERIOR ao selecionado
+        month = month - 1;
+        if (month === 0) {
+            month = 12;
+            year = year - 1;
         }
 
         // Lista das contas exatamente como no banco de dados
@@ -1544,7 +1747,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="flex-1">
                         <h4 class="font-medium text-gray-800">${expense.description}</h4>
                         <p class="text-sm text-gray-600">
-                            <strong>Valor:</strong> €${parseFloat(expense.amount).toFixed(2)} | 
+                            <strong>Valor:</strong> ${formatCurrencyDetailed(parseFloat(expense.amount))} | 
                             <strong>Conta:</strong> ${expense.account} | 
                             <strong>Dia:</strong> ${expense.day_of_month}
                         </p>
@@ -1570,8 +1773,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function handleRecurringExpenseSubmit(e) {
         e.preventDefault();
+        
+        // Prevenir submissões duplicadas
+        if (isSubmittingRecurringExpense) {
+            console.log('Submissão de gasto recorrente já em andamento. Ignorando duplicata.');
+            showToast('Aguarde, processando gasto recorrente anterior...', 'warning');
+            return;
+        }
+        
+        isSubmittingRecurringExpense = true;
+        console.log('Iniciando submissão de gasto recorrente...');
+        
         const token = getToken();
-        if (!token) return;
+        if (!token) {
+            isSubmittingRecurringExpense = false;
+            return;
+        }
+
+        // Desabilitar botão de submit temporariamente
+        const submitButton = recurringForm.querySelector('button[type="submit"]');
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Criando...';
+        }
 
         const formData = new FormData(recurringForm);
         const data = {
@@ -1583,9 +1807,14 @@ document.addEventListener('DOMContentLoaded', function() {
             day_of_month: parseInt(formData.get('day_of_month')) || 1
         };
 
-        // Validar se é conta permitida
-        if (!['PIX', 'Boleto'].includes(data.account)) {
-            showNotification('Gastos recorrentes só são permitidos para contas PIX e Boleto', 'error');
+        // Validações básicas
+        if (!data.description || !data.amount || !data.account) {
+            showToast('Preencha todos os campos obrigatórios', 'error');
+            isSubmittingRecurringExpense = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.innerHTML = 'Criar Gasto Recorrente';
+            }
             return;
         }
 
@@ -1601,12 +1830,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (!response.ok) throw new Error('Erro ao criar gasto recorrente');
 
-            showNotification('Gasto recorrente criado com sucesso!', 'success');
+            showToast('Gasto recorrente criado com sucesso!', 'success');
             recurringForm.reset();
             await loadRecurringExpenses();
+            console.log('Gasto recorrente criado com sucesso');
+            
         } catch (error) {
             console.error('Erro ao criar gasto recorrente:', error);
-            showNotification('Erro ao criar gasto recorrente', 'error');
+            showToast('Erro ao criar gasto recorrente', 'error');
+        } finally {
+            // Reabilitar botão e resetar flag
+            isSubmittingRecurringExpense = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.innerHTML = 'Criar Gasto Recorrente';
+            }
+            console.log('Submissão de gasto recorrente finalizada');
         }
     }
 
@@ -1633,15 +1872,35 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function processRecurringExpenses() {
+        // Prevenir processamento duplicado
+        if (isProcessingRecurringExpenses) {
+            console.log('Processamento de gastos recorrentes já em andamento. Ignorando duplicata.');
+            showToast('Aguarde, processamento anterior ainda em andamento...', 'warning');
+            return;
+        }
+        
+        isProcessingRecurringExpenses = true;
+        console.log('Iniciando processamento de gastos recorrentes...');
+        
         const token = getToken();
-        if (!token) return;
+        if (!token) {
+            isProcessingRecurringExpenses = false;
+            return;
+        }
 
         const year = filterYear.value;
         const month = filterMonth.value;
 
         if (!year || !month) {
-            showNotification('Selecione ano e mês para processar', 'error');
+            showToast('Selecione ano e mês para processar', 'error');
+            isProcessingRecurringExpenses = false;
             return;
+        }
+        
+        // Desabilitar botão temporariamente
+        if (processRecurringBtn) {
+            processRecurringBtn.disabled = true;
+            processRecurringBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processando...';
         }
 
         try {
@@ -1658,7 +1917,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (!response.ok) throw new Error(result.message);
 
-            showNotification(result.message, 'success');
+            showToast(result.message, 'success');
             await fetchAllData(); // Recarregar dados do dashboard
             
             // Recarregar dados específicos da aba ativa
@@ -1670,9 +1929,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     await loadBusinessAnalysis();
                 }
             }
+            
+            console.log('Processamento de gastos recorrentes completado com sucesso');
+            
         } catch (error) {
             console.error('Erro ao processar gastos recorrentes:', error);
-            showNotification('Erro ao processar gastos recorrentes', 'error');
+            showToast('Erro ao processar gastos recorrentes', 'error');
+        } finally {
+            // Reabilitar botão e resetar flag
+            isProcessingRecurringExpenses = false;
+            if (processRecurringBtn) {
+                processRecurringBtn.disabled = false;
+                processRecurringBtn.innerHTML = 'Processar Mês Atual';
+            }
+            console.log('Processamento de gastos recorrentes finalizado');
         }
     }
 
@@ -1706,6 +1976,12 @@ document.addEventListener('DOMContentLoaded', function() {
             content.classList.add('hidden');
         });
 
+        // Destruir gráficos empresariais quando se sai da aba de análise empresarial
+        const currentActiveTab = document.querySelector('.tab-button.active');
+        if (currentActiveTab && currentActiveTab.dataset.tab === 'business-analysis' && tabId !== 'business-analysis') {
+            destroyBusinessCharts();
+        }
+
         // Activate selected tab
         const activeButton = document.querySelector(`[data-tab="${tabId}"]`);
         const activeContent = document.getElementById(`${tabId}-tab`);
@@ -1719,6 +1995,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (tabId === 'pix-boleto') {
                 loadPixBoletoData();
             } else if (tabId === 'business-analysis') {
+                // Destruir gráficos antes de carregar novos dados
+                destroyBusinessCharts();
                 loadBusinessAnalysis();
             }
         }
@@ -2506,8 +2784,13 @@ document.addEventListener('DOMContentLoaded', function() {
         renderBusinessAccountChart(expenses);
         renderBusinessCategoryChart(expenses);
         renderBusinessInvoiceStatusChart(expenses);
-        renderQuarterlyComparisonChart(expenses);
-        renderExpenseProjectionChart(expenses);
+        
+        // Usar debounce para evitar chamadas muito rápidas
+        if (quarterlyTimeout) clearTimeout(quarterlyTimeout);
+        quarterlyTimeout = setTimeout(() => renderQuarterlyComparisonChart(expenses), 100);
+        
+        if (projectionTimeout) clearTimeout(projectionTimeout);
+        projectionTimeout = setTimeout(() => renderExpenseProjectionChart(expenses), 150);
     }
 
     // Destruir gráficos empresariais existentes
@@ -2519,7 +2802,8 @@ document.addEventListener('DOMContentLoaded', function() {
             'business-category-chart',
             'business-invoice-status-chart',
             'quarterly-comparison-chart',
-            'expense-projection-chart'
+            'expense-projection-chart',
+            'billing-period-chart'  // Adicionado para corrigir o erro do gráfico de período de fatura
         ];
 
         // Destruir gráficos pelo objeto businessCharts
@@ -2558,15 +2842,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-evolution-chart');
         if (!ctx) return;
 
-        // Destruir gráfico específico se existir - método mais robusto
-        if (businessCharts.evolution) {
-            try {
-                businessCharts.evolution.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico evolution:', e);
-            }
-            businessCharts.evolution = null;
-        }
+        // Usar função utilitária para limpar canvas
+        ensureCanvasClean(ctx, 'evolution');
 
         // Verificar se o canvas já tem um gráfico ativo
         const existingChart = Chart.getChart(ctx);
@@ -2642,25 +2919,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-account-chart');
         if (!ctx) return;
 
-        // Destruir gráfico específico se existir - método mais robusto
-        if (businessCharts.account) {
-            try {
-                businessCharts.account.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico account:', e);
-            }
-            businessCharts.account = null;
-        }
-
-        // Verificar se o canvas já tem um gráfico ativo
-        const existingChart = Chart.getChart(ctx);
-        if (existingChart) {
-            try {
-                existingChart.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico existente do canvas:', e);
-            }
-        }
+        // Usar função utilitária para limpar canvas
+        ensureCanvasClean(ctx, 'account');
 
         const accountData = {};
         expenses.forEach(expense => {
@@ -2706,25 +2966,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-category-chart');
         if (!ctx) return;
 
-        // Destruir gráfico específico se existir - método mais robusto
-        if (businessCharts.category) {
-            try {
-                businessCharts.category.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico category:', e);
-            }
-            businessCharts.category = null;
-        }
-
-        // Verificar se o canvas já tem um gráfico ativo
-        const existingChart = Chart.getChart(ctx);
-        if (existingChart) {
-            try {
-                existingChart.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico existente do canvas:', e);
-            }
-        }
+        // Usar função utilitária para limpar canvas
+        ensureCanvasClean(ctx, 'category');
 
         const categoryData = {};
         expenses.forEach(expense => {
@@ -2779,25 +3022,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-invoice-status-chart');
         if (!ctx) return;
 
-        // Destruir gráfico específico se existir - método mais robusto
-        if (businessCharts.invoice) {
-            try {
-                businessCharts.invoice.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico invoice:', e);
-            }
-            businessCharts.invoice = null;
-        }
-
-        // Verificar se o canvas já tem um gráfico ativo
-        const existingChart = Chart.getChart(ctx);
-        if (existingChart) {
-            try {
-                existingChart.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico existente do canvas:', e);
-            }
-        }
+        // Usar função utilitária para limpar canvas
+        ensureCanvasClean(ctx, 'invoice');
 
         const withInvoice = expenses.filter(exp => exp.has_invoice === 1 || exp.has_invoice === true).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
         const withoutInvoice = expenses.filter(exp => exp.has_invoice !== 1 && exp.has_invoice !== true).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
@@ -2836,27 +3062,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Gráfico de comparação trimestral
     async function renderQuarterlyComparisonChart(expenses) {
-        const ctx = document.getElementById('quarterly-comparison-chart');
-        if (!ctx) return;
-
-        // Destruir gráfico específico se existir - método mais robusto
-        if (businessCharts.quarterly) {
-            try {
-                businessCharts.quarterly.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico quarterly:', e);
-            }
-            businessCharts.quarterly = null;
+        // Evitar execução concorrente
+        if (renderingQuarterly) {
+            console.log('Renderização trimestral já em andamento, ignorando chamada');
+            return;
+        }
+        renderingQuarterly = true;
+        
+        let ctx = document.getElementById('quarterly-comparison-chart');
+        if (!ctx) {
+            renderingQuarterly = false;
+            return;
         }
 
-        // Verificar se o canvas já tem um gráfico ativo
-        const existingChart = Chart.getChart(ctx);
-        if (existingChart) {
-            try {
-                existingChart.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico existente do canvas:', e);
-            }
+        // Usar função utilitária para limpar canvas
+        ensureCanvasClean(ctx, 'quarterly');
+        
+        // Obter canvas novamente caso tenha sido recriado
+        ctx = document.getElementById('quarterly-comparison-chart');
+        if (!ctx) {
+            renderingQuarterly = false;
+            return;
         }
 
         try {
@@ -2889,6 +3115,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const labels = Object.keys(quarterlyData).sort();
                 const data = labels.map(label => quarterlyData[label]);
+
+                // Verificação final antes de criar o gráfico
+                const finalCheck = Chart.getChart(ctx);
+                if (finalCheck) {
+                    console.warn(`AVISO: Ainda existe gráfico ID ${finalCheck.id} no canvas quarterly-comparison-chart`);
+                    try {
+                        finalCheck.destroy();
+                    } catch (e) {
+                        console.error('Erro ao destruir gráfico restante:', e);
+                    }
+                }
 
                 businessCharts.quarterly = new Chart(ctx, {
                     type: 'bar',
@@ -2932,15 +3169,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Erro ao carregar dados trimestrais:', error);
-            // Verificar novamente se há algum gráfico no canvas antes do fallback
-            const existingChartFallback = Chart.getChart(ctx);
-            if (existingChartFallback) {
-                try {
-                    existingChartFallback.destroy();
-                } catch (e) {
-                    console.warn('Erro ao destruir gráfico existente no fallback:', e);
-                }
-            }
+            // Usar função utilitária para limpar canvas no fallback
+            ensureCanvasClean(ctx, 'quarterly');
             
             // Fallback com dados atuais
             const quarterlyData = {};
@@ -2995,31 +3225,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
+        
+        // Liberar flag de renderização
+        renderingQuarterly = false;
     }
 
     // Gráfico de projeção de gastos
     async function renderExpenseProjectionChart(expenses) {
-        const ctx = document.getElementById('expense-projection-chart');
-        if (!ctx) return;
-
-        // Destruir gráfico específico se existir - método mais robusto
-        if (businessCharts.projection) {
-            try {
-                businessCharts.projection.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico projection:', e);
-            }
-            businessCharts.projection = null;
+        // Evitar execução concorrente
+        if (renderingProjection) {
+            console.log('Renderização de projeção já em andamento, ignorando chamada');
+            return;
+        }
+        renderingProjection = true;
+        
+        let ctx = document.getElementById('expense-projection-chart');
+        if (!ctx) {
+            renderingProjection = false;
+            return;
         }
 
-        // Verificar se o canvas já tem um gráfico ativo
-        const existingChart = Chart.getChart(ctx);
-        if (existingChart) {
-            try {
-                existingChart.destroy();
-            } catch (e) {
-                console.warn('Erro ao destruir gráfico existente do canvas:', e);
-            }
+        // Usar função utilitária para limpar canvas
+        ensureCanvasClean(ctx, 'projection');
+        
+        // Obter canvas novamente caso tenha sido recriado
+        ctx = document.getElementById('expense-projection-chart');
+        if (!ctx) {
+            renderingProjection = false;
+            return;
         }
 
         try {
@@ -3062,6 +3295,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Aplicar pequena variação baseada na tendência
                     const variation = i * 0.02; // 2% de crescimento por mês
                     projectionData.push(average * (1 + variation));
+                }
+
+                // Verificação final antes de criar o gráfico
+                const finalCheck = Chart.getChart(ctx);
+                if (finalCheck) {
+                    console.warn(`AVISO: Ainda existe gráfico ID ${finalCheck.id} no canvas expense-projection-chart`);
+                    try {
+                        finalCheck.destroy();
+                    } catch (e) {
+                        console.error('Erro ao destruir gráfico restante:', e);
+                    }
                 }
 
                 businessCharts.projection = new Chart(ctx, {
@@ -3111,15 +3355,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Erro ao carregar dados para projeção:', error);
-            // Verificar novamente se há algum gráfico no canvas antes do fallback
-            const existingChartFallback = Chart.getChart(ctx);
-            if (existingChartFallback) {
-                try {
-                    existingChartFallback.destroy();
-                } catch (e) {
-                    console.warn('Erro ao destruir gráfico existente no fallback:', e);
-                }
-            }
+            // Usar função utilitária para limpar canvas no fallback
+            ensureCanvasClean(ctx, 'projection');
             
             // Fallback com dados atuais
             const monthlyTotals = {};
@@ -3173,6 +3410,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
+        
+        // Liberar flag de renderização
+        renderingProjection = false;
     }
 
     // Popular tabela de gastos empresariais
@@ -3220,7 +3460,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <i class="fas fa-edit"></i>
                         </button>
                         ${invoiceFile ? 
-                            `<a href="${FILE_BASE_URL}/uploads/${invoiceFile}" target="_blank" 
+                            `<a href="${API_BASE_URL}/uploads/${invoiceFile}" target="_blank" 
                                class="text-green-600 hover:text-green-800 p-1 rounded" title="Ver Nota Fiscal">
                                <i class="fas fa-file-invoice"></i>
                              </a>` : 
@@ -3304,6 +3544,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
+            // Usar função utilitária para limpar canvas
+            const billingCanvas = document.getElementById('billing-period-chart');
+            ensureCanvasClean(billingCanvas, 'billingPeriod');
+
             // Buscar gastos empresariais para o ano/mês/conta selecionado
             const params = new URLSearchParams({
                 is_business: 'true',
@@ -3393,10 +3637,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('billing-period-chart');
         if (!ctx) return;
 
-        // Destruir gráfico existente se houver
-        if (businessCharts.billingPeriod) {
-            businessCharts.billingPeriod.destroy();
-        }
+        // Usar função utilitária para limpar canvas
+        ensureCanvasClean(ctx, 'billingPeriod');
 
         // Agrupar por dia
         const dailyData = {};
