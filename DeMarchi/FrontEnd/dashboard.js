@@ -2160,12 +2160,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Destruir gráficos empresariais existentes
     function destroyBusinessCharts() {
+        // Lista de IDs dos canvas de gráficos empresariais
+        const canvasIds = [
+            'business-evolution-chart',
+            'business-account-chart', 
+            'business-category-chart',
+            'business-invoice-status-chart',
+            'quarterly-comparison-chart',
+            'expense-projection-chart'
+        ];
+
+        // Destruir gráficos pelo objeto businessCharts
         Object.keys(businessCharts).forEach(chartKey => {
             if (businessCharts[chartKey]) {
-                businessCharts[chartKey].destroy();
+                try {
+                    businessCharts[chartKey].destroy();
+                } catch (e) {
+                    console.warn(`Erro ao destruir gráfico ${chartKey}:`, e);
+                }
                 businessCharts[chartKey] = null;
             }
         });
+
+        // Destruir gráficos diretamente pelo canvas (método de segurança adicional)
+        canvasIds.forEach(canvasId => {
+            const canvas = document.getElementById(canvasId);
+            if (canvas) {
+                const existingChart = Chart.getChart(canvas);
+                if (existingChart) {
+                    try {
+                        existingChart.destroy();
+                    } catch (e) {
+                        console.warn(`Erro ao destruir gráfico do canvas ${canvasId}:`, e);
+                    }
+                }
+            }
+        });
+
+        // Limpar o objeto businessCharts
+        businessCharts = {};
     }
 
     // Gráfico de evolução mensal
@@ -2173,10 +2206,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-evolution-chart');
         if (!ctx) return;
 
-        // Destruir gráfico específico se existir
+        // Destruir gráfico específico se existir - método mais robusto
         if (businessCharts.evolution) {
-            businessCharts.evolution.destroy();
+            try {
+                businessCharts.evolution.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico evolution:', e);
+            }
             businessCharts.evolution = null;
+        }
+
+        // Verificar se o canvas já tem um gráfico ativo
+        const existingChart = Chart.getChart(ctx);
+        if (existingChart) {
+            try {
+                existingChart.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico existente do canvas:', e);
+            }
         }
 
         // Agrupar por mês
@@ -2230,10 +2277,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-account-chart');
         if (!ctx) return;
 
-        // Destruir gráfico específico se existir
+        // Destruir gráfico específico se existir - método mais robusto
         if (businessCharts.account) {
-            businessCharts.account.destroy();
+            try {
+                businessCharts.account.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico account:', e);
+            }
             businessCharts.account = null;
+        }
+
+        // Verificar se o canvas já tem um gráfico ativo
+        const existingChart = Chart.getChart(ctx);
+        if (existingChart) {
+            try {
+                existingChart.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico existente do canvas:', e);
+            }
         }
 
         const accountData = {};
@@ -2266,10 +2327,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-category-chart');
         if (!ctx) return;
 
-        // Destruir gráfico específico se existir
+        // Destruir gráfico específico se existir - método mais robusto
         if (businessCharts.category) {
-            businessCharts.category.destroy();
+            try {
+                businessCharts.category.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico category:', e);
+            }
             businessCharts.category = null;
+        }
+
+        // Verificar se o canvas já tem um gráfico ativo
+        const existingChart = Chart.getChart(ctx);
+        if (existingChart) {
+            try {
+                existingChart.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico existente do canvas:', e);
+            }
         }
 
         const categoryData = {};
@@ -2312,6 +2387,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('business-invoice-status-chart');
         if (!ctx) return;
 
+        // Destruir gráfico específico se existir - método mais robusto
+        if (businessCharts.invoice) {
+            try {
+                businessCharts.invoice.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico invoice:', e);
+            }
+            businessCharts.invoice = null;
+        }
+
+        // Verificar se o canvas já tem um gráfico ativo
+        const existingChart = Chart.getChart(ctx);
+        if (existingChart) {
+            try {
+                existingChart.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico existente do canvas:', e);
+            }
+        }
+
         const withInvoice = expenses.filter(exp => exp.has_invoice === 1 || exp.has_invoice === true).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
         const withoutInvoice = expenses.filter(exp => exp.has_invoice !== 1 && exp.has_invoice !== true).reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
 
@@ -2337,6 +2432,26 @@ document.addEventListener('DOMContentLoaded', function() {
     async function renderQuarterlyComparisonChart(expenses) {
         const ctx = document.getElementById('quarterly-comparison-chart');
         if (!ctx) return;
+
+        // Destruir gráfico específico se existir - método mais robusto
+        if (businessCharts.quarterly) {
+            try {
+                businessCharts.quarterly.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico quarterly:', e);
+            }
+            businessCharts.quarterly = null;
+        }
+
+        // Verificar se o canvas já tem um gráfico ativo
+        const existingChart = Chart.getChart(ctx);
+        if (existingChart) {
+            try {
+                existingChart.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico existente do canvas:', e);
+            }
+        }
 
         try {
             // Buscar dados dos últimos 12 meses para análise trimestral
@@ -2399,6 +2514,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Erro ao carregar dados trimestrais:', error);
+            // Verificar novamente se há algum gráfico no canvas antes do fallback
+            const existingChartFallback = Chart.getChart(ctx);
+            if (existingChartFallback) {
+                try {
+                    existingChartFallback.destroy();
+                } catch (e) {
+                    console.warn('Erro ao destruir gráfico existente no fallback:', e);
+                }
+            }
+            
             // Fallback com dados atuais
             const quarterlyData = {};
             expenses.forEach(expense => {
@@ -2445,6 +2570,26 @@ document.addEventListener('DOMContentLoaded', function() {
     async function renderExpenseProjectionChart(expenses) {
         const ctx = document.getElementById('expense-projection-chart');
         if (!ctx) return;
+
+        // Destruir gráfico específico se existir - método mais robusto
+        if (businessCharts.projection) {
+            try {
+                businessCharts.projection.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico projection:', e);
+            }
+            businessCharts.projection = null;
+        }
+
+        // Verificar se o canvas já tem um gráfico ativo
+        const existingChart = Chart.getChart(ctx);
+        if (existingChart) {
+            try {
+                existingChart.destroy();
+            } catch (e) {
+                console.warn('Erro ao destruir gráfico existente do canvas:', e);
+            }
+        }
 
         try {
             // Buscar dados dos últimos 6 meses para calcular projeção mais precisa
@@ -2522,6 +2667,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Erro ao carregar dados para projeção:', error);
+            // Verificar novamente se há algum gráfico no canvas antes do fallback
+            const existingChartFallback = Chart.getChart(ctx);
+            if (existingChartFallback) {
+                try {
+                    existingChartFallback.destroy();
+                } catch (e) {
+                    console.warn('Erro ao destruir gráfico existente no fallback:', e);
+                }
+            }
+            
             // Fallback com dados atuais
             const monthlyTotals = {};
             expenses.forEach(expense => {
@@ -2542,7 +2697,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 projectionData.push(average);
             }
 
-            businessCharts.projectionFallback = new Chart(ctx, {
+            businessCharts.projection = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: projectionLabels,
