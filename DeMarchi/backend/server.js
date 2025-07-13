@@ -289,73 +289,6 @@ app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
     }
 });
 
-app.get('/api/dashboard', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { year, month } = req.query;
-
-    if (!year || !month) {
-        return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
-    }
-
-    try {
-        const [
-            projectionData,
-            lineChartData,
-            pieChartData,
-            mixedTypeChartData,
-            planChartData
-        ] = await Promise.all([
-            // Projeção para o próximo mês
-            pool.query(
-                `SELECT SUM(amount) AS total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?`,
-                [userId, parseInt(month, 10) === 12 ? parseInt(year, 10) + 1 : year, parseInt(month, 10) === 12 ? 1 : parseInt(month, 10) + 1]
-            ),
-            // Evolução dos Gastos (Diário para o mês selecionado)
-            pool.query(
-                `SELECT DAY(transaction_date) as day, SUM(amount) as total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ? GROUP BY DAY(transaction_date) ORDER BY DAY(transaction_date)`,
-                [userId, year, month]
-            ),
-            // Distribuição por Conta (Pie Chart)
-            pool.query(
-                `SELECT account, SUM(amount) as total FROM expenses WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ? GROUP BY account`,
-                [userId, year, month]
-            ),
-            // Comparação Pessoal vs. Empresarial (Mixed Chart)
-            pool.query(
-                `SELECT account,
-                        SUM(CASE WHEN is_business_expense = 0 THEN amount ELSE 0 END) as personal_total,
-                        SUM(CASE WHEN is_business_expense = 1 THEN amount ELSE 0 END) as business_total
-                 FROM expenses
-                 WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
-                 GROUP BY account`,
-                [userId, year, month]
-            ),
-            // Gastos por Plano de Conta (Bar Chart)
-            pool.query(
-                `SELECT account_plan_code, SUM(amount) as total
-                 FROM expenses
-                 WHERE user_id = ? AND is_business_expense = 0 AND account_plan_code IS NOT NULL AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
-                 GROUP BY account_plan_code`,
-                [userId, year, month]
-            )
-        ]);
-
-        const nextMonthProjection = parseFloat(projectionData[0][0]?.total || 0);
-
-        res.json({
-            projection: { nextMonthEstimate: nextMonthProjection.toFixed(2) },
-            lineChartData: lineChartData[0],
-            pieChartData: pieChartData[0],
-            mixedTypeChartData: mixedTypeChartData[0],
-            planChartData: planChartData[0]
-        });
-
-    } catch (error) {
-        console.error('Erro ao buscar dados do dashboard:', error);
-        res.status(500).json({ message: 'Erro ao buscar dados do dashboard.' });
-    }
-});
-
 // --- 8.1. ROTA DE TETOS POR PLANO DE CONTAS (ALERTAS) ---
 // Renomeado de metas para tetos, pois o foco é não ultrapassar o limite de gastos
 const tetos = {
@@ -934,130 +867,59 @@ app.post('/api/recurring-expenses/process', authenticateToken, async (req, res) 
         `, [monthKey, userId]);
 
         let processedCount = 0;
+        const daysInMonth = new Date(year, month, 0).getDate();
 
         for (const recurring of recurringExpenses) {
-            // Criar a data baseada no dia configurado
-            const transactionDate = new Date(year, month - 1, recurring.day_of_month);
+            // Para PIX e Boleto, criar múltiplas instâncias durante o mês
+            let processingDays = [recurring.day_of_month || 1];
             
-            // Se o dia não existe no mês (ex: 31 em fevereiro), usar o último dia do mês
-            if (transactionDate.getMonth() !== month - 1) {
-                transactionDate.setDate(0); // Vai para o último dia do mês anterior
+            if (['PIX', 'Boleto'].includes(recurring.account)) {
+                // PIX: processar nos dias 1, 10, 20 e último dia do mês
+                // Boleto: processar nos dias 5, 15 e 25
+                if (recurring.account === 'PIX') {
+                    processingDays = [1, 10, 20, daysInMonth];
+                } else if (recurring.account === 'Boleto') {
+                    processingDays = [5, 15, 25];
+                }
             }
 
-            const formattedDate = transactionDate.toISOString().split('T')[0];
+            // Processar para cada dia configurado
+            for (const day of processingDays) {
+                if (day <= daysInMonth) {
+                    // Criar a data baseada no dia configurado
+                    const transactionDate = new Date(year, month - 1, day);
+                    
+                    // Se o dia não existe no mês (ex: 31 em fevereiro), usar o último dia do mês
+                    if (transactionDate.getMonth() !== month - 1) {
+                        transactionDate.setDate(0); // Vai para o último dia do mês anterior
+                    }
 
-            // Inserir na tabela de expenses
-            const [expenseResult] = await pool.query(
-                `INSERT INTO expenses (user_id, transaction_date, amount, description, account, 
-                 is_business_expense, account_plan_code, is_recurring_expense, total_installments) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`,
-                [userId, formattedDate, recurring.amount, recurring.description, 
-                 recurring.account, recurring.is_business_expense, recurring.account_plan_code]
-            );
+                    const formattedDate = transactionDate.toISOString().split('T')[0];
 
-            // Registrar o processamento
-            await pool.query(
-                'INSERT INTO recurring_expense_processing (recurring_expense_id, processed_month, expense_id) VALUES (?, ?, ?)',
-                [recurring.id, monthKey, expenseResult.insertId]
-            );
+                    // Criar descrição diferenciada para múltiplas ocorrências
+                    let description = recurring.description;
+                    if (processingDays.length > 1) {
+                        const dayNames = {
+                            1: '1º', 10: '10º', 15: '15º', 20: '20º', 25: '25º'
+                        };
+                        const dayName = dayNames[day] || `${day}º`;
+                        if (day === daysInMonth && recurring.account === 'PIX') {
+                            description += ` (Último dia do mês)`;
+                        } else {
+                            description += ` (${dayName} do mês)`;
+                        }
+                    }
 
-            processedCount++;
-        }
+                    // Inserir na tabela de expenses
+                    const [expenseResult] = await pool.query(
+                        `INSERT INTO expenses (user_id, transaction_date, amount, description, account, 
+                         is_business_expense, account_plan_code, is_recurring_expense, total_installments, installment_number) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 1)`,
+                        [userId, formattedDate, recurring.amount, description, 
+                         recurring.account, recurring.is_business_expense, recurring.account_plan_code]
+                    );
 
-        res.json({ 
-            message: 'Gastos recorrentes processados para ' + month + '/' + year + ': ' + processedCount,
-            processedCount 
-        });
-    } catch (error) {
-        console.error('Erro ao processar gastos recorrentes:', error);
-        res.status(500).json({ message: 'Erro ao processar gastos recorrentes.' });
-    }
-});
-
-// --- 8.3. ROTAS MODIFICADAS PARA FILTRAR GASTOS RECORRENTES ---
-app.get('/api/expenses', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { year, month, account, start_date, end_date, recurring } = req.query;
-
-    try {
-        let sql = 'SELECT * FROM expenses WHERE user_id = ?';
-        const params = [userId];
-
-        // Filtro por conta
-        if (account) {
-            sql += ' AND account = ?';
-            params.push(account);
-        }
-
-        // Filtro por despesas recorrentes
-        if (recurring === 'true') {
-            sql += ' AND is_recurring_expense = 1';
-        } else if (recurring === 'false') {
-            sql += ' AND is_recurring_expense = 0';
-        }
-
-        // Permite busca por intervalo de datas explícito (usado na busca de fatura)
-        if (start_date && end_date) {
-            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
-            params.push(start_date, end_date);
-        } else if (account && billingPeriods[account] && year && month) {
-            const { startDay, endDay } = billingPeriods[account];
-            const startDate = new Date(year, month - 1, startDay);
-            let endMonth = Number(month);
-            let endYear = Number(year);
-            if (endDay < startDay) {
-                endMonth++;
-                if (endMonth > 12) { endMonth = 1; endYear++; }
-            }
-            const endDate = new Date(endYear, endMonth - 1, endDay);
-
-            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
-            params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
-        } else if (year && month) {
-            sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
-            params.push(year, month);
-        }
-
-        sql += ' ORDER BY transaction_date DESC';
-        const [rows] = await pool.query(sql, params);
-        res.json(rows);
-    } catch (error) {
-        console.error('Erro ao buscar despesas:', error);
-        res.status(500).json({ message: 'Erro ao buscar despesas.' });
-    }
-});
-
-// --- 9. INICIALIZAÇÃO DO SERVIDOR ---
-app.listen(PORT, async () => {
-    try {
-        await pool.getConnection();
-        console.log('Conexão com o MySQL estabelecida com sucesso.');
-        console.log('Servidor a ser executado na porta ' + PORT);
-    } catch (error) {
-        console.error('ERRO CRÍTICO AO CONECTAR COM O BANCO DE DADOS:', error.message);
-        process.exit(1);
-    }
-});
-
-const billingPeriods = {
-    'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
-    'Nu Vainer': { startDay: 2, endDay: 1 },
-    'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
-    'PicPay Vainer': { startDay: 1, endDay: 30 },
-    'PIX': { startDay: 1, endDay: 30, isRecurring: true },
-    'Boleto': { startDay: 1, endDay: 30, isRecurring: true }
-};
-
-app.get('/api/accounts', authenticateToken, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const [rows] = await pool.query(
-            'SELECT DISTINCT account FROM expenses WHERE user_id = ? ORDER BY account',
-            [userId]
-        );
-        res.json(rows.map(r => r.account));
-    } catch (error) {
-        console.error('Erro ao buscar contas:', error);
-        res.status(500).json({ message: 'Erro ao buscar contas.' });
-    }
-});
+                    // Registrar o processamento (apenas uma vez por gasto recorrente, não por dia)
+                    if (day === processingDays[0]) {
+                        await pool.query(
+                            'INSERT INTO recurring_expense_processing (recurring_expense_id, processed_month, expense_id) VALUES (?, ?, ?)',
