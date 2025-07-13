@@ -923,3 +923,374 @@ app.post('/api/recurring-expenses/process', authenticateToken, async (req, res) 
                     if (day === processingDays[0]) {
                         await pool.query(
                             'INSERT INTO recurring_expense_processing (recurring_expense_id, processed_month, expense_id) VALUES (?, ?, ?)',
+                            [recurring.id, monthKey, expenseResult.insertId]
+                        );
+                    }
+
+                    processedCount++;
+                }
+            }
+        }
+
+        res.json({ 
+            message: `Gastos recorrentes processados para ${month}/${year}: ${processedCount} transações criadas`,
+            processedCount 
+        });
+    } catch (error) {
+        console.error('Erro ao processar gastos recorrentes:', error);
+        res.status(500).json({ message: 'Erro ao processar gastos recorrentes.' });
+    }
+});
+
+// --- 9. DASHBOARD DATA ROUTES --
+
+// Período de fatura por conta para análise empresarial
+const billingPeriods = {
+    'Nu Bank Ketlyn': { startDay: 2, endDay: 1, isRecurring: false },
+    'Nu Vainer': { startDay: 8, endDay: 7, isRecurring: false },
+    'Ourocard Ketlyn': { startDay: 13, endDay: 12, isRecurring: false },
+    'PicPay Vainer': { startDay: 3, endDay: 2, isRecurring: false },
+    'PIX': { startDay: 1, endDay: 31, isRecurring: true },
+    'Boleto': { startDay: 1, endDay: 31, isRecurring: true }
+};
+
+// Rota para buscar dados do dashboard
+app.get('/api/dashboard', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { year, month } = req.query;
+
+        if (!year || !month) {
+            return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
+        }
+
+        // Buscar dados para o gráfico de linha (gastos por dia)
+        const [lineData] = await pool.query(`
+            SELECT DAY(transaction_date) as day, SUM(amount) as total
+            FROM expenses 
+            WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
+            GROUP BY DAY(transaction_date)
+            ORDER BY day
+        `, [userId, year, month]);
+
+        // Buscar dados para o gráfico de pizza (gastos por conta)
+        const [pieData] = await pool.query(`
+            SELECT account, SUM(amount) as total
+            FROM expenses 
+            WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
+            GROUP BY account
+            ORDER BY total DESC
+        `, [userId, year, month]);
+
+        // Buscar dados para o gráfico misto (pessoal vs empresarial por conta)
+        const [mixedData] = await pool.query(`
+            SELECT 
+                account,
+                SUM(CASE WHEN is_business_expense = 0 THEN amount ELSE 0 END) as personal_total,
+                SUM(CASE WHEN is_business_expense = 1 THEN amount ELSE 0 END) as business_total
+            FROM expenses 
+            WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
+            GROUP BY account
+            HAVING (personal_total > 0 OR business_total > 0)
+            ORDER BY (personal_total + business_total) DESC
+        `, [userId, year, month]);
+
+        // Buscar dados para o gráfico de planos de conta
+        const [planData] = await pool.query(`
+            SELECT account_plan_code, SUM(amount) as total
+            FROM expenses 
+            WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ? 
+                  AND account_plan_code IS NOT NULL
+            GROUP BY account_plan_code
+            ORDER BY total DESC
+            LIMIT 15
+        `, [userId, year, month]);
+
+        // Calcular projeção para o próximo mês
+        const [currentMonthData] = await pool.query(`
+            SELECT SUM(amount) as total, COUNT(*) as transactions
+            FROM expenses 
+            WHERE user_id = ? AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
+        `, [userId, year, month]);
+
+        const currentTotal = currentMonthData[0]?.total || 0;
+        const currentTransactions = currentMonthData[0]?.transactions || 0;
+
+        // Buscar média dos últimos 3 meses para projeção
+        const [avgData] = await pool.query(`
+            SELECT AVG(monthly_total) as avg_monthly
+            FROM (
+                SELECT SUM(amount) as monthly_total
+                FROM expenses 
+                WHERE user_id = ? AND transaction_date >= DATE_SUB(?, 1)
+                GROUP BY YEAR(transaction_date), MONTH(transaction_date)
+                ORDER BY transaction_date DESC
+                LIMIT 3
+            ) as monthly_totals
+        `, [userId, `${year}-${month}-01`]);
+
+        const nextMonthEstimate = avgData[0]?.avg_monthly || currentTotal;
+
+        res.json({
+            lineChartData: lineData,
+            pieChartData: pieData,
+            mixedTypeChartData: mixedData,
+            planChartData: planData,
+            projection: {
+                currentMonth: currentTotal,
+                currentTransactions: currentTransactions,
+                nextMonthEstimate: nextMonthEstimate
+            }
+        });
+
+    } catch (error) {
+        console.error('Erro ao buscar dados do dashboard:', error);
+        res.status(500).json({ message: 'Erro ao buscar dados do dashboard.' });
+    }
+});
+
+// Rota para buscar filtros de contas
+app.get('/api/accounts', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [accounts] = await pool.query(`
+            SELECT DISTINCT account 
+            FROM expenses 
+            WHERE user_id = ? 
+            ORDER BY account
+        `, [userId]);
+
+        res.json(accounts.map(row => row.account));
+    } catch (error) {
+        console.error('Erro ao buscar contas:', error);
+        res.status(500).json({ message: 'Erro ao buscar contas.' });
+    }
+});
+
+// --- 10. BUSINESS ANALYSIS ROUTES --
+
+// Rota para análise empresarial por período
+app.get('/api/business-analysis', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { period, dateFrom, dateTo, account } = req.query;
+
+        let startDate, endDate;
+        
+        // Determinar período baseado no parâmetro
+        const now = new Date();
+        switch (period) {
+            case 'current-month':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                break;
+            case 'last-month':
+                startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+                break;
+            case 'current-quarter':
+                const quarter = Math.floor(now.getMonth() / 3);
+                startDate = new Date(now.getFullYear(), quarter * 3, 1);
+                endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+                break;
+            case 'current-year':
+                startDate = new Date(now.getFullYear(), 0, 1);
+                endDate = new Date(now.getFullYear(), 11, 31);
+                break;
+            case 'custom':
+                if (!dateFrom || !dateTo) {
+                    return res.status(400).json({ message: 'Datas inicial e final são obrigatórias para período customizado.' });
+                }
+                startDate = new Date(dateFrom);
+                endDate = new Date(dateTo);
+                break;
+            default:
+                return res.status(400).json({ message: 'Período inválido.' });
+        }
+
+        // Query base para gastos empresariais
+        let sql = `
+            SELECT * FROM expenses 
+            WHERE user_id = ? AND is_business_expense = 1 
+            AND transaction_date >= ? AND transaction_date <= ?
+        `;
+        let params = [userId, startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10)];
+
+        // Filtrar por conta se especificado
+        if (account && account !== 'all') {
+            sql += ' AND account = ?';
+            params.push(account);
+        }
+
+        sql += ' ORDER BY transaction_date DESC';
+
+        const [expenses] = await pool.query(sql, params);
+
+        // Calcular resumos
+        const total = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        const count = expenses.length;
+
+        // Agrupar por conta
+        const byAccount = {};
+        expenses.forEach(e => {
+            if (!byAccount[e.account]) byAccount[e.account] = 0;
+            byAccount[e.account] += parseFloat(e.amount);
+        });
+
+        // Agrupar por plano de conta
+        const byPlan = {};
+        expenses.forEach(e => {
+            const plan = e.account_plan_code || 'Sem plano';
+            if (!byPlan[plan]) byPlan[plan] = 0;
+            byPlan[plan] += parseFloat(e.amount);
+        });
+
+        // Agrupar por mês (para análise temporal)
+        const byMonth = {};
+        expenses.forEach(e => {
+            const monthKey = new Date(e.transaction_date).toISOString().slice(0, 7);
+            if (!byMonth[monthKey]) byMonth[monthKey] = 0;
+            byMonth[monthKey] += parseFloat(e.amount);
+        });
+
+        res.json({
+            expenses,
+            summary: {
+                total,
+                count,
+                averagePerTransaction: count > 0 ? total / count : 0,
+                period: {
+                    from: startDate.toISOString().slice(0, 10),
+                    to: endDate.toISOString().slice(0, 10)
+                }
+            },
+            charts: {
+                byAccount,
+                byPlan,
+                byMonth
+            }
+        });
+
+    } catch (error) {
+        console.error('Erro na análise empresarial:', error);
+        res.status(500).json({ message: 'Erro na análise empresarial.' });
+    }
+});
+
+// --- 11. PIX/BOLETO SPECIFIC ROUTES --
+
+// Rota específica para dados de PIX e Boleto
+app.get('/api/pix-boleto-data', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { year, month, type, search } = req.query;
+
+        if (!year || !month) {
+            return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
+        }
+
+        // Determinar quais contas buscar
+        let accounts = [];
+        if (type === 'pix') {
+            accounts = ['PIX'];
+        } else if (type === 'boleto') {
+            accounts = ['Boleto'];
+        } else {
+            accounts = ['PIX', 'Boleto'];
+        }
+
+        // Query base
+        let sql = `
+            SELECT * FROM expenses 
+            WHERE user_id = ? AND account IN (${accounts.map(() => '?').join(',')})
+            AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?
+        `;
+        let params = [userId, ...accounts, year, month];
+
+        // Filtro de busca
+        if (search && search.trim()) {
+            sql += ' AND (description LIKE ? OR amount LIKE ?)';
+            const searchTerm = `%${search.trim()}%`;
+            params.push(searchTerm, searchTerm);
+        }
+
+        sql += ' ORDER BY transaction_date DESC';
+
+        const [transactions] = await pool.query(sql, params);
+
+        // Separar por tipo
+        const pixTransactions = transactions.filter(t => t.account === 'PIX');
+        const boletoTransactions = transactions.filter(t => t.account === 'Boleto');
+
+        // Calcular totais
+        const pixTotal = pixTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+        const boletoTotal = boletoTransactions.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+        // Agrupar por categoria (plano de conta)
+        const pixByCategory = {};
+        const boletoByCategory = {};
+
+        pixTransactions.forEach(t => {
+            const category = t.account_plan_code || 'Sem categoria';
+            if (!pixByCategory[category]) pixByCategory[category] = 0;
+            pixByCategory[category] += parseFloat(t.amount);
+        });
+
+        boletoTransactions.forEach(t => {
+            const category = t.account_plan_code || 'Sem categoria';
+            if (!boletoByCategory[category]) boletoByCategory[category] = 0;
+            boletoByCategory[category] += parseFloat(t.amount);
+        });
+
+        res.json({
+            transactions,
+            pix: {
+                transactions: pixTransactions,
+                total: pixTotal,
+                count: pixTransactions.length,
+                byCategory: pixByCategory
+            },
+            boleto: {
+                transactions: boletoTransactions,
+                total: boletoTotal,
+                count: boletoTransactions.length,
+                byCategory: boletoByCategory
+            },
+            summary: {
+                grandTotal: pixTotal + boletoTotal,
+                totalTransactions: transactions.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Erro ao buscar dados PIX/Boleto:', error);
+        res.status(500).json({ message: 'Erro ao buscar dados PIX/Boleto.' });
+    }
+});
+
+// --- 12. MIDDLEWARES DE ERRO ---
+app.use((err, req, res, next) => {
+    console.error('Erro não tratado:', err);
+    res.status(500).json({ message: 'Erro interno do servidor.' });
+});
+
+// --- 13. INICIALIZAÇÃO DO SERVIDOR ---
+async function startServer() {
+    try {
+        // Testar conexão com o banco
+        await pool.query('SELECT 1');
+        console.log('✅ Conexão com banco de dados estabelecida');
+        
+        // Iniciar servidor
+        app.listen(PORT, () => {
+            console.log(`🚀 Servidor rodando na porta ${PORT}`);
+            console.log(`📊 ChartJS suporte: ${chartCanvasAvailable ? 'disponível' : 'não disponível'}`);
+            console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+        });
+    } catch (error) {
+        console.error('❌ Erro ao iniciar servidor:', error);
+        process.exit(1);
+    }
+}
+
+startServer();
