@@ -1648,6 +1648,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Load specific content based on tab
                     if (targetTab === 'business-analysis') {
                         loadBusinessAnalysis();
+                    } else if (targetTab === 'invoices') {
+                        loadInvoicesAnalysis();
                     }
                 }
             });
@@ -1994,6 +1996,482 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Nenhum token encontrado, mostrando login');
             showLogin();
         }
+    }
+
+    // ========== ANÁLISE DE FATURAS ==========
+    
+    async function loadInvoicesAnalysis() {
+        try {
+            console.log('Carregando análise de faturas...');
+            
+            // Inicializar filtros
+            populateInvoiceFilters();
+            
+            // Carregar dados iniciais
+            await filterInvoices();
+            
+        } catch (error) {
+            console.error('Erro ao carregar análise de faturas:', error);
+            showNotification('Erro ao carregar dados de faturas', 'error');
+        }
+    }
+
+    function populateInvoiceFilters() {
+        const yearSelect = document.getElementById('invoice-year');
+        const currentYear = new Date().getFullYear();
+        
+        // Limpar e preencher anos
+        yearSelect.innerHTML = '<option value="">Todos os anos</option>';
+        for (let year = currentYear; year >= currentYear - 5; year--) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            if (year === currentYear) option.selected = true;
+            yearSelect.appendChild(option);
+        }
+    }
+
+    async function filterInvoices() {
+        try {
+            const year = document.getElementById('invoice-year').value;
+            const month = document.getElementById('invoice-month').value;
+            const account = document.getElementById('invoice-account').value;
+            const status = document.getElementById('invoice-status').value;
+
+            console.log('Filtrando faturas:', { year, month, account, status });
+
+            // Buscar todos os gastos
+            let url = `${API_BASE_URL}/api/expenses`;
+            const params = new URLSearchParams();
+            
+            if (year) params.append('year', year);
+            if (month) params.append('month', month);
+            if (account) params.append('account', account);
+            
+            if (params.toString()) {
+                url += '?' + params.toString();
+            }
+
+            const response = await authenticatedFetch(url);
+            if (!response.ok) throw new Error('Erro ao buscar gastos');
+            
+            const expenses = await response.json();
+            
+            // Filtrar apenas gastos com parcelas (que têm data de término)
+            const expensesWithInstallments = expenses.filter(expense => 
+                expense.total_installments && expense.total_installments > 1
+            );
+
+            // Calcular dados das faturas
+            const invoiceData = calculateInvoiceData(expensesWithInstallments, status);
+            
+            // Atualizar interface
+            updateInvoiceSummary(invoiceData);
+            updateInvoiceCharts(invoiceData);
+            updateInvoiceAccountCards(invoiceData);
+            updateInvoiceDetailsTable(invoiceData.filteredExpenses);
+            updateInvoiceAlerts(invoiceData.alerts);
+
+        } catch (error) {
+            console.error('Erro ao filtrar faturas:', error);
+            showNotification('Erro ao carregar dados de faturas', 'error');
+        }
+    }
+
+    function calculateInvoiceData(expenses, statusFilter) {
+        const today = new Date();
+        const currentDate = today.toISOString().split('T')[0];
+        
+        const processedExpenses = expenses.map(expense => {
+            const purchaseDate = new Date(expense.transaction_date);
+            const totalInstallments = parseInt(expense.total_installments) || 1;
+            
+            // Calcular data de término (último mês da parcela)
+            const endDate = new Date(purchaseDate);
+            endDate.setMonth(endDate.getMonth() + totalInstallments - 1);
+            
+            // Determinar status
+            let status = 'finalizado';
+            let daysRemaining = 0;
+            
+            if (endDate > today) {
+                status = 'em-andamento';
+                daysRemaining = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+            } else if (endDate < today) {
+                const daysPast = Math.ceil((today - endDate) / (1000 * 60 * 60 * 24));
+                if (daysPast > 30) {
+                    status = 'vencido';
+                    daysRemaining = -daysPast;
+                }
+            }
+            
+            return {
+                ...expense,
+                endDate: endDate.toISOString().split('T')[0],
+                status,
+                daysRemaining,
+                installmentValue: parseFloat(expense.amount),
+                totalValue: parseFloat(expense.amount) * totalInstallments
+            };
+        });
+
+        // Filtrar por status se especificado
+        let filteredExpenses = processedExpenses;
+        if (statusFilter) {
+            filteredExpenses = processedExpenses.filter(exp => exp.status === statusFilter);
+        }
+
+        // Agrupar por conta
+        const byAccount = filteredExpenses.reduce((acc, expense) => {
+            if (!acc[expense.account]) {
+                acc[expense.account] = [];
+            }
+            acc[expense.account].push(expense);
+            return acc;
+        }, {});
+
+        // Calcular totais
+        const totalFiltered = filteredExpenses.reduce((sum, exp) => sum + exp.totalValue, 0);
+        const ongoingCount = processedExpenses.filter(exp => exp.status === 'em-andamento').length;
+        const overdueCount = processedExpenses.filter(exp => exp.status === 'vencido').length;
+
+        // Gerar alertas
+        const alerts = generateInvoiceAlerts(processedExpenses);
+
+        return {
+            allExpenses: processedExpenses,
+            filteredExpenses,
+            byAccount,
+            totalFiltered,
+            transactionCount: filteredExpenses.length,
+            ongoingCount,
+            overdueCount,
+            alerts
+        };
+    }
+
+    function generateInvoiceAlerts(expenses) {
+        const alerts = [];
+        const today = new Date();
+        
+        // Alertas para vencimentos próximos (próximos 30 dias)
+        const soonToExpire = expenses.filter(exp => 
+            exp.status === 'em-andamento' && exp.daysRemaining <= 30 && exp.daysRemaining > 0
+        );
+        
+        if (soonToExpire.length > 0) {
+            alerts.push({
+                type: 'warning',
+                title: `${soonToExpire.length} fatura(s) vencem em até 30 dias`,
+                description: soonToExpire.map(exp => 
+                    `${exp.description} (${exp.account}) - ${exp.daysRemaining} dias`
+                ).slice(0, 3).join(', ') + (soonToExpire.length > 3 ? '...' : ''),
+                count: soonToExpire.length
+            });
+        }
+
+        // Alertas para vencidos
+        const overdue = expenses.filter(exp => exp.status === 'vencido');
+        if (overdue.length > 0) {
+            alerts.push({
+                type: 'error',
+                title: `${overdue.length} fatura(s) vencida(s)`,
+                description: overdue.map(exp => 
+                    `${exp.description} (${exp.account}) - ${Math.abs(exp.daysRemaining)} dias atrás`
+                ).slice(0, 3).join(', ') + (overdue.length > 3 ? '...' : ''),
+                count: overdue.length
+            });
+        }
+
+        return alerts;
+    }
+
+    function updateInvoiceSummary(data) {
+        document.getElementById('invoice-total-filtered').textContent = 
+            'R$ ' + data.totalFiltered.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+        document.getElementById('invoice-count-filtered').textContent = data.transactionCount;
+        document.getElementById('invoice-ongoing-count').textContent = data.ongoingCount;
+        document.getElementById('invoice-overdue-count').textContent = data.overdueCount;
+    }
+
+    function updateInvoiceCharts(data) {
+        // Gráfico de evolução mensal
+        updateInvoiceEvolutionChart(data.filteredExpenses);
+        
+        // Gráfico de distribuição por conta
+        updateInvoiceAccountChart(data.byAccount);
+    }
+
+    function updateInvoiceEvolutionChart(expenses) {
+        const ctx = document.getElementById('invoice-evolution-chart');
+        if (!ctx) return;
+
+        // Agrupar por mês de término
+        const monthlyData = expenses.reduce((acc, expense) => {
+            const endDate = new Date(expense.endDate);
+            const monthKey = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`;
+            
+            if (!acc[monthKey]) {
+                acc[monthKey] = { total: 0, count: 0 };
+            }
+            acc[monthKey].total += expense.totalValue;
+            acc[monthKey].count += 1;
+            
+            return acc;
+        }, {});
+
+        const sortedMonths = Object.keys(monthlyData).sort();
+        const labels = sortedMonths.map(month => {
+            const [year, monthNum] = month.split('-');
+            const date = new Date(year, monthNum - 1);
+            return date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+        });
+        const values = sortedMonths.map(month => monthlyData[month].total);
+
+        if (window.invoiceEvolutionChart) {
+            window.invoiceEvolutionChart.destroy();
+        }
+
+        window.invoiceEvolutionChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Valor das Faturas',
+                    data: values,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Evolução Mensal das Faturas'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'R$ ' + value.toLocaleString('pt-BR');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateInvoiceAccountChart(accountData) {
+        const ctx = document.getElementById('invoice-account-chart');
+        if (!ctx) return;
+
+        const accounts = Object.keys(accountData);
+        const values = accounts.map(account => 
+            accountData[account].reduce((sum, exp) => sum + exp.totalValue, 0)
+        );
+
+        if (window.invoiceAccountChart) {
+            window.invoiceAccountChart.destroy();
+        }
+
+        window.invoiceAccountChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: accounts,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', 
+                        '#ef4444', '#6366f1', '#ec4899', '#84cc16'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Distribuição por Conta'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${context.label}: R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateInvoiceAccountCards(data) {
+        const container = document.getElementById('invoice-accounts-container');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        Object.keys(data.byAccount).forEach(account => {
+            const accountExpenses = data.byAccount[account];
+            const accountTotal = accountExpenses.reduce((sum, exp) => sum + exp.totalValue, 0);
+            const ongoingCount = accountExpenses.filter(exp => exp.status === 'em-andamento').length;
+            const overdueCount = accountExpenses.filter(exp => exp.status === 'vencido').length;
+
+            const cardHtml = `
+                <div class="bg-white p-6 rounded-lg shadow-md mb-6 invoice-account-card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-gray-700">${account}</h3>
+                        <div class="text-right">
+                            <p class="text-2xl font-bold text-purple-600">R$ ${accountTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            <p class="text-sm text-gray-500">${accountExpenses.length} faturas</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 mb-4">
+                        <div class="text-center p-3 bg-green-50 rounded-lg">
+                            <p class="text-sm text-green-600">Finalizadas</p>
+                            <p class="text-lg font-bold text-green-700">${accountExpenses.filter(exp => exp.status === 'finalizado').length}</p>
+                        </div>
+                        <div class="text-center p-3 bg-yellow-50 rounded-lg">
+                            <p class="text-sm text-yellow-600">Em Andamento</p>
+                            <p class="text-lg font-bold text-yellow-700">${ongoingCount}</p>
+                        </div>
+                        <div class="text-center p-3 bg-red-50 rounded-lg">
+                            <p class="text-sm text-red-600">Vencidas</p>
+                            <p class="text-lg font-bold text-red-700">${overdueCount}</p>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="p-2 text-left">Descrição</th>
+                                    <th class="p-2 text-left">Valor Total</th>
+                                    <th class="p-2 text-left">Status</th>
+                                    <th class="p-2 text-left">Término</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${accountExpenses.map(expense => `
+                                    <tr class="invoice-table-row border-t">
+                                        <td class="p-2">${expense.description}</td>
+                                        <td class="p-2">R$ ${expense.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                        <td class="p-2">
+                                            <span class="invoice-status-badge invoice-status-${expense.status}">
+                                                ${expense.status === 'em-andamento' ? 'Em Andamento' : 
+                                                  expense.status === 'finalizado' ? 'Finalizado' : 'Vencido'}
+                                            </span>
+                                        </td>
+                                        <td class="p-2">${new Date(expense.endDate).toLocaleDateString('pt-BR')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML += cardHtml;
+        });
+    }
+
+    function updateInvoiceDetailsTable(expenses) {
+        const tbody = document.getElementById('invoice-details-table');
+        if (!tbody) return;
+
+        tbody.innerHTML = expenses.map(expense => `
+            <tr class="invoice-table-row border-t">
+                <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
+                <td class="p-3">${expense.description}</td>
+                <td class="p-3">R$ ${expense.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td class="p-3">${expense.account}</td>
+                <td class="p-3">${expense.total_installments}x de R$ ${expense.installmentValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td class="p-3">${new Date(expense.endDate).toLocaleDateString('pt-BR')}</td>
+                <td class="p-3">
+                    <span class="invoice-status-badge invoice-status-${expense.status}">
+                        ${expense.status === 'em-andamento' ? 'Em Andamento' : 
+                          expense.status === 'finalizado' ? 'Finalizado' : 'Vencido'}
+                    </span>
+                </td>
+                <td class="p-3">
+                    ${expense.status === 'em-andamento' ? 
+                        `${expense.daysRemaining} dias` : 
+                        expense.status === 'vencido' ? 
+                        `${Math.abs(expense.daysRemaining)} dias atrás` : 
+                        'Finalizado'}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function updateInvoiceAlerts(alerts) {
+        const container = document.getElementById('invoice-alerts');
+        if (!container) return;
+
+        if (alerts.length === 0) {
+            container.innerHTML = '<p class="text-gray-500">Nenhum alerta no momento.</p>';
+            return;
+        }
+
+        container.innerHTML = alerts.map(alert => `
+            <div class="p-4 rounded-lg ${alert.type === 'error' ? 'invoice-alert' : 'invoice-warning'}">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">${alert.type === 'error' ? '🚨' : '⚠️'}</span>
+                    <div>
+                        <h4 class="font-semibold">${alert.title}</h4>
+                        <p class="text-sm mt-1">${alert.description}</p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Event listeners para a aba de faturas
+    document.addEventListener('DOMContentLoaded', function() {
+        const filterInvoicesBtn = document.getElementById('filter-invoices-btn');
+        if (filterInvoicesBtn) {
+            filterInvoicesBtn.addEventListener('click', filterInvoices);
+        }
+
+        // Auto-filtrar quando mudar filtros
+        ['invoice-year', 'invoice-month', 'invoice-account', 'invoice-status'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', filterInvoices);
+            }
+        });
+
+        // Botões de exportação
+        const exportCsvBtn = document.getElementById('export-invoices-csv');
+        const exportPdfBtn = document.getElementById('export-invoices-pdf');
+        
+        if (exportCsvBtn) {
+            exportCsvBtn.addEventListener('click', exportInvoicesCSV);
+        }
+        
+        if (exportPdfBtn) {
+            exportPdfBtn.addEventListener('click', exportInvoicesPDF);
+        }
+    });
+
+    function exportInvoicesCSV() {
+        // Implementar exportação CSV
+        showNotification('Funcionalidade de exportação CSV em desenvolvimento', 'info');
+    }
+
+    function exportInvoicesPDF() {
+        // Implementar exportação PDF
+        showNotification('Funcionalidade de exportação PDF em desenvolvimento', 'info');
     }
 
     // Chamar inicialização
