@@ -10,3 +10,5 @@ restartPolicyMaxRetries = 3
 
 [environments.production.variables]
 NODE_ENV = "production"
+NPM_CONFIG_FUND = "false"
+NPM_CONFIG_AUDIT = "false"

@@ -3,13 +3,14 @@ nodejs = "18.x"
 
 [build]
 cmds = [
-    "npm ci --only=production",
-    "npm rebuild canvas || echo 'Canvas rebuild failed, continuing without it'"
+    "npm install --production --no-package-lock --no-fund --no-audit",
+    "npm rebuild canvas || true"
 ]
 
 [start]
 cmd = "npm start"
 
 [variables]
-NPM_CONFIG_PRODUCTION = "true"
 NODE_ENV = "production"
+NPM_CONFIG_FUND = "false"
+NPM_CONFIG_AUDIT = "false"

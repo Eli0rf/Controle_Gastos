@@ -6,8 +6,9 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "npm rebuild canvas || echo 'Canvas rebuild failed, continuing without it'",
-    "build": "echo 'No build step required'"
+    "postinstall": "npm rebuild canvas --silent || true",
+    "build": "echo 'No build step required'",
+    "prestart": "npm rebuild canvas --silent || true"
   },
   "keywords": [],
   "author": "",
@@ -15,7 +16,6 @@
   "description": "",
   "dependencies": {
     "bcryptjs": "^3.0.2",
-    "chartjs-node-canvas": "^5.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
@@ -25,7 +25,8 @@
     "pdfkit": "^0.17.1"
   },
   "optionalDependencies": {
-    "canvas": "^2.11.2"
+    "canvas": "^2.11.2",
+    "chartjs-node-canvas": "^5.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

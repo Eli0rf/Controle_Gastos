@@ -9,16 +9,19 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libgif-dev \
     librsvg2-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Definir diretório de trabalho
 WORKDIR /app
 
-# Copiar package files primeiro para melhor cache do Docker
-COPY package*.json ./
+# Copiar apenas package.json primeiro
+COPY package.json ./
 
-# Instalar dependências
-RUN npm ci --only=production && npm cache clean --force
+# Instalar dependências com handling para canvas
+RUN npm install --omit=dev --no-package-lock && \
+    npm rebuild canvas || echo 'Canvas rebuild failed, continuing without it' && \
+    npm cache clean --force
 
 # Copiar código fonte
 COPY . .

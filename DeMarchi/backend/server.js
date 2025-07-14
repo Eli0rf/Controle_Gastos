@@ -202,7 +202,7 @@ app.post('/api/expenses', authenticateToken, upload.single('invoice'), async (re
 
 app.get('/api/expenses', authenticateToken, async (req, res) => {
     const userId = req.user.id;
-    const { year, month, account, start_date, end_date, include_recurring } = req.query;
+    const { year, month, account, start_date, end_date, include_recurring, billing_period } = req.query;
 
     try {
         let sql = 'SELECT * FROM expenses WHERE user_id = ?';
@@ -221,7 +221,7 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
             if (account && ['PIX', 'Boleto'].includes(account)) {
                 // Se for busca por período de fatura, incluir recorrentes
                 // Se for busca geral, excluir recorrentes
-                if (!start_date && !end_date) {
+                if (!start_date && !end_date && billing_period !== 'true') {
                     sql += ' AND is_recurring_expense = 0';
                 }
             }
@@ -231,8 +231,29 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
         if (start_date && end_date) {
             sql += ' AND transaction_date >= ? AND transaction_date <= ?';
             params.push(start_date, end_date);
-        } else if (account && billingPeriods[account] && year && month) {
-            // Para contas PIX e Boleto, não aplicar filtro de período de fatura
+        } else if (billing_period === 'true' && account && billingPeriods[account] && year && month) {
+            // Filtro por período vigente de fatura
+            const { startDay, endDay, isRecurring } = billingPeriods[account];
+            
+            if (!isRecurring) {
+                const startDate = new Date(year, month - 1, startDay);
+                let endMonth = Number(month);
+                let endYear = Number(year);
+                if (endDay < startDay) {
+                    endMonth++;
+                    if (endMonth > 12) { endMonth = 1; endYear++; }
+                }
+                const endDate = new Date(endYear, endMonth - 1, endDay);
+
+                sql += ' AND transaction_date >= ? AND transaction_date <= ?';
+                params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
+            } else {
+                // Para PIX e Boleto, filtrar apenas por mês/ano normal
+                sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
+                params.push(year, month);
+            }
+        } else if (account && billingPeriods[account] && year && month && billing_period !== 'false') {
+            // Para contas PIX e Boleto, não aplicar filtro de período de fatura por padrão
             if (!billingPeriods[account].isRecurring) {
                 const { startDay, endDay } = billingPeriods[account];
                 const startDate = new Date(year, month - 1, startDay);
@@ -1149,6 +1170,364 @@ app.post('/api/recurring-expenses/process', authenticateToken, async (req, res) 
     } catch (error) {
         console.error('Erro ao processar gastos recorrentes:', error);
         res.status(500).json({ message: 'Erro ao processar gastos recorrentes.' });
+    }
+});
+
+// --- ROTA PARA FATURAS COM PERÍODO VIGENTE ---
+app.get('/api/bills', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { year, month, account } = req.query;
+
+        if (!year || !month || !account) {
+            return res.status(400).json({ message: 'Ano, mês e conta são obrigatórios para consulta de fatura.' });
+        }
+
+        // Verificar se a conta tem período vigente definido
+        if (!billingPeriods[account]) {
+            return res.status(400).json({ message: 'Conta não possui período de fatura definido.' });
+        }
+
+        const { startDay, endDay, isRecurring } = billingPeriods[account];
+        
+        // Calcular o período vigente da fatura
+        let startDate, endDate;
+        
+        if (isRecurring) {
+            // Para PIX e Boleto, usar o mês normal
+            startDate = new Date(year, month - 1, 1);
+            endDate = new Date(year, month, 0); // Último dia do mês
+        } else {
+            // Para cartões de crédito
+            startDate = new Date(year, month - 1, startDay);
+            let endMonth = Number(month);
+            let endYear = Number(year);
+            
+            if (endDay < startDay) {
+                endMonth++;
+                if (endMonth > 12) { 
+                    endMonth = 1; 
+                    endYear++; 
+                }
+            }
+            
+            endDate = new Date(endYear, endMonth - 1, endDay);
+        }
+
+        // Buscar gastos no período vigente
+        const [expenses] = await pool.query(`
+            SELECT * FROM expenses 
+            WHERE user_id = ? AND account = ? 
+            AND transaction_date >= ? AND transaction_date <= ?
+            ORDER BY transaction_date DESC
+        `, [userId, account, startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10)]);
+
+        // Calcular totais gerais
+        const totalGeral = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        const totalEmpresarial = expenses
+            .filter(e => e.is_business_expense)
+            .reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        const totalPessoal = totalGeral - totalEmpresarial;
+
+        // Agrupar por planos de contas (apenas gastos pessoais)
+        const porPlanoContas = {};
+        const gastosEmpresariais = [];
+
+        expenses.forEach(expense => {
+            if (expense.is_business_expense) {
+                gastosEmpresariais.push({
+                    id: expense.id,
+                    date: expense.transaction_date,
+                    amount: parseFloat(expense.amount),
+                    description: expense.description,
+                    has_invoice: expense.has_invoice,
+                    invoice_path: expense.invoice_path
+                });
+            } else if (expense.account_plan_code) {
+                const plano = expense.account_plan_code;
+                if (!porPlanoContas[plano]) {
+                    porPlanoContas[plano] = {
+                        code: plano,
+                        total: 0,
+                        count: 0,
+                        expenses: []
+                    };
+                }
+                porPlanoContas[plano].total += parseFloat(expense.amount);
+                porPlanoContas[plano].count++;
+                porPlanoContas[plano].expenses.push({
+                    id: expense.id,
+                    date: expense.transaction_date,
+                    amount: parseFloat(expense.amount),
+                    description: expense.description
+                });
+            }
+        });
+
+        // Converter para array e ordenar por total
+        const planosArray = Object.values(porPlanoContas).sort((a, b) => b.total - a.total);
+
+        res.json({
+            account,
+            period: {
+                start: startDate.toISOString().slice(0, 10),
+                end: endDate.toISOString().slice(0, 10),
+                type: isRecurring ? 'monthly' : 'billing_cycle'
+            },
+            summary: {
+                totalGeral: parseFloat(totalGeral.toFixed(2)),
+                totalEmpresarial: parseFloat(totalEmpresarial.toFixed(2)),
+                totalPessoal: parseFloat(totalPessoal.toFixed(2)),
+                totalTransactions: expenses.length
+            },
+            planoContas: planosArray,
+            gastosEmpresariais,
+            allExpenses: expenses.map(e => ({
+                id: e.id,
+                date: e.transaction_date,
+                amount: parseFloat(e.amount),
+                description: e.description,
+                account_plan_code: e.account_plan_code,
+                is_business_expense: e.is_business_expense,
+                has_invoice: e.has_invoice,
+                invoice_path: e.invoice_path,
+                installment_info: e.total_installments > 1 ? {
+                    current: e.installment_number,
+                    total: e.total_installments,
+                    total_amount: e.total_purchase_amount
+                } : null
+            }))
+        });
+
+    } catch (error) {
+        console.error('Erro ao buscar fatura:', error);
+        res.status(500).json({ message: 'Erro ao buscar dados da fatura.' });
+    }
+});
+
+// --- ROTA PARA RESUMO DE FATURA EM PDF ---
+app.post('/api/bills/pdf', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { year, month, account } = req.body;
+
+        if (!year || !month || !account) {
+            return res.status(400).json({ message: 'Ano, mês e conta são obrigatórios.' });
+        }
+
+        // Verificar se a conta tem período vigente definido
+        if (!billingPeriods[account]) {
+            return res.status(400).json({ message: 'Conta não possui período de fatura definido.' });
+        }
+
+        const { startDay, endDay, isRecurring } = billingPeriods[account];
+        
+        // Calcular o período vigente da fatura
+        let startDate, endDate;
+        
+        if (isRecurring) {
+            startDate = new Date(year, month - 1, 1);
+            endDate = new Date(year, month, 0);
+        } else {
+            startDate = new Date(year, month - 1, startDay);
+            let endMonth = Number(month);
+            let endYear = Number(year);
+            
+            if (endDay < startDay) {
+                endMonth++;
+                if (endMonth > 12) { 
+                    endMonth = 1; 
+                    endYear++; 
+                }
+            }
+            
+            endDate = new Date(endYear, endMonth - 1, endDay);
+        }
+
+        // Buscar gastos do período
+        const [expenses] = await pool.query(`
+            SELECT * FROM expenses 
+            WHERE user_id = ? AND account = ? 
+            AND transaction_date >= ? AND transaction_date <= ?
+            ORDER BY transaction_date DESC
+        `, [userId, account, startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10)]);
+
+        // Calcular totais
+        const totalGeral = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        const totalEmpresarial = expenses
+            .filter(e => e.is_business_expense)
+            .reduce((sum, e) => sum + parseFloat(e.amount), 0);
+        const totalPessoal = totalGeral - totalEmpresarial;
+
+        // Agrupar por planos de contas
+        const porPlanoContas = {};
+        expenses.forEach(expense => {
+            if (!expense.is_business_expense && expense.account_plan_code) {
+                const plano = expense.account_plan_code;
+                if (!porPlanoContas[plano]) {
+                    porPlanoContas[plano] = { total: 0, count: 0 };
+                }
+                porPlanoContas[plano].total += parseFloat(expense.amount);
+                porPlanoContas[plano].count++;
+            }
+        });
+
+        // Gerar PDF
+        const doc = new pdfkit({ autoFirstPage: false });
+        doc.registerFont('NotoSans', path.join(__dirname, 'fonts', 'NotoSans-Regular.ttf'));
+        doc.font('NotoSans');
+
+        // Capa
+        doc.addPage({ margin: 40, size: 'A4', layout: 'portrait' });
+        doc.rect(0, 0, doc.page.width, 90).fill('#2563EB');
+        doc.fillColor('white').fontSize(28).text('💳 Fatura Detalhada', 0, 30, { align: 'center', width: doc.page.width });
+        doc.moveDown();
+        doc.fontSize(16).text(`Conta: ${account}`, { align: 'center' });
+        doc.fontSize(14).text(`Período: ${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')}`, { align: 'center' });
+        doc.moveDown();
+        doc.fontSize(20).fillColor('#10B981').text(`Total: R$ ${totalGeral.toFixed(2)}`, { align: 'center' });
+        doc.moveDown(2);
+        doc.fillColor('#6B7280').fontSize(12).text('Relatório gerado pelo sistema Controle de Gastos', { align: 'center' });
+
+        // Resumo
+        doc.addPage();
+        doc.fontSize(22).fillColor('#1F2937').text('📊 Resumo da Fatura', { align: 'center' });
+        doc.moveDown(2);
+        
+        doc.fontSize(16).fillColor('#059669');
+        doc.text(`💰 Total Geral: R$ ${totalGeral.toFixed(2)}`);
+        doc.moveDown();
+        doc.fillColor('#DC2626').text(`🏢 Total Empresarial: R$ ${totalEmpresarial.toFixed(2)}`);
+        doc.moveDown();
+        doc.fillColor('#2563EB').text(`🏠 Total Pessoal: R$ ${totalPessoal.toFixed(2)}`);
+        doc.moveDown();
+        doc.fillColor('#6B7280').fontSize(14).text(`📝 Total de Transações: ${expenses.length}`);
+
+        // Gastos por Plano de Contas
+        if (Object.keys(porPlanoContas).length > 0) {
+            doc.addPage();
+            doc.fontSize(20).fillColor('#7C3AED').text('📋 Gastos por Plano de Contas', { align: 'center' });
+            doc.moveDown(2);
+            
+            Object.entries(porPlanoContas)
+                .sort(([,a], [,b]) => b.total - a.total)
+                .forEach(([plano, data]) => {
+                    doc.fontSize(14).fillColor('#1F2937');
+                    doc.text(`Plano ${plano}: R$ ${data.total.toFixed(2)} (${data.count} transações)`);
+                    doc.moveDown(0.5);
+                });
+        }
+
+        // Gastos Empresariais Detalhados
+        const gastosEmpresariais = expenses.filter(e => e.is_business_expense);
+        if (gastosEmpresariais.length > 0) {
+            doc.addPage();
+            doc.fontSize(20).fillColor('#DC2626').text('🏢 Gastos Empresariais Detalhados', { align: 'center' });
+            doc.moveDown(2);
+            
+            gastosEmpresariais.forEach(e => {
+                doc.fontSize(12).fillColor('#1F2937');
+                doc.text(`${new Date(e.transaction_date).toLocaleDateString('pt-BR')} | R$ ${parseFloat(e.amount).toFixed(2)} | ${e.description}${e.has_invoice ? ' | 📄 NF' : ''}`);
+                doc.moveDown(0.3);
+            });
+        }
+
+        // Todas as transações
+        doc.addPage();
+        doc.fontSize(18).fillColor('#1F2937').text('📝 Todas as Transações', { align: 'center' });
+        doc.moveDown(2);
+        
+        expenses.forEach(e => {
+            const tipo = e.is_business_expense ? '🏢' : '🏠';
+            const plano = e.account_plan_code ? ` | Plano ${e.account_plan_code}` : '';
+            doc.fontSize(11).fillColor('#374151');
+            doc.text(`${new Date(e.transaction_date).toLocaleDateString('pt-BR')} | R$ ${parseFloat(e.amount).toFixed(2)} | ${tipo} ${e.description}${plano}`);
+            doc.moveDown(0.2);
+        });
+
+        // Rodapé
+        doc.fontSize(10).fillColor('#6B7280').text('Gerado automaticamente pelo Controle de Gastos 🚀', 0, doc.page.height - 40, { align: 'center', width: doc.page.width });
+
+        doc.end();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=fatura-${account}-${year}-${month}.pdf`);
+        doc.pipe(res);
+
+    } catch (error) {
+        console.error('Erro ao gerar PDF da fatura:', error);
+        res.status(500).json({ message: 'Erro ao gerar PDF da fatura.' });
+    }
+});
+
+// --- ROTA PARA INFORMAÇÕES DOS PERÍODOS DE FATURAMENTO ---
+app.get('/api/billing-periods', authenticateToken, (req, res) => {
+    try {
+        const periods = Object.entries(billingPeriods).map(([account, config]) => ({
+            account,
+            startDay: config.startDay,
+            endDay: config.endDay,
+            isRecurring: config.isRecurring || false,
+            type: config.isRecurring ? 'monthly' : 'billing_cycle'
+        }));
+        
+        res.json(periods);
+    } catch (error) {
+        console.error('Erro ao buscar períodos de faturamento:', error);
+        res.status(500).json({ message: 'Erro ao buscar períodos de faturamento.' });
+    }
+});
+
+// --- ROTA PARA CALCULAR PERÍODO VIGENTE DE UMA CONTA ---
+app.get('/api/billing-periods/:account/current', authenticateToken, (req, res) => {
+    try {
+        const { account } = req.params;
+        const { year, month } = req.query;
+        
+        if (!year || !month) {
+            return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
+        }
+        
+        if (!billingPeriods[account]) {
+            return res.status(404).json({ message: 'Conta não encontrada ou sem período definido.' });
+        }
+        
+        const { startDay, endDay, isRecurring } = billingPeriods[account];
+        let startDate, endDate;
+        
+        if (isRecurring) {
+            startDate = new Date(year, month - 1, 1);
+            endDate = new Date(year, month, 0);
+        } else {
+            startDate = new Date(year, month - 1, startDay);
+            let endMonth = Number(month);
+            let endYear = Number(year);
+            
+            if (endDay < startDay) {
+                endMonth++;
+                if (endMonth > 12) { 
+                    endMonth = 1; 
+                    endYear++; 
+                }
+            }
+            
+            endDate = new Date(endYear, endMonth - 1, endDay);
+        }
+        
+        res.json({
+            account,
+            requestedPeriod: { year: Number(year), month: Number(month) },
+            currentPeriod: {
+                start: startDate.toISOString().slice(0, 10),
+                end: endDate.toISOString().slice(0, 10),
+                startDay: startDate.getDate(),
+                endDay: endDate.getDate(),
+                type: isRecurring ? 'monthly' : 'billing_cycle'
+            }
+        });
+        
+    } catch (error) {
+        console.error('Erro ao calcular período vigente:', error);
+        res.status(500).json({ message: 'Erro ao calcular período vigente.' });
     }
 });
 

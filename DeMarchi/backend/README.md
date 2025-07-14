@@ -56,11 +56,39 @@ PORT=3000
 - `GET /health` - Status detalhado da aplicação e banco
 - `POST /api/login` - Login
 - `POST /api/register` - Registro
-- `GET /api/expenses` - Listar gastos
+- `GET /api/expenses` - Listar gastos (suporte a filtro por período vigente)
 - `POST /api/expenses` - Criar gasto
+- `GET /api/bills` - **NOVA**: Fatura com período vigente e divisão por planos
+- `POST /api/bills/pdf` - **NOVA**: Gerar PDF da fatura
+- `GET /api/billing-periods` - **NOVA**: Informações dos períodos de faturamento
+- `GET /api/billing-periods/:account/current` - **NOVA**: Calcular período vigente
 - `GET /api/reports/weekly` - Relatório semanal
 - `POST /api/reports/monthly` - Relatório mensal PDF
 - `GET /api/recurring-expenses` - Gastos recorrentes
+
+### 🆕 **Novas Funcionalidades de Faturamento**
+
+#### **Filtro por Período Vigente**
+- **Nu Bank**: Dia 2 de um mês até dia 2 do mês seguinte
+- **Ourocard**: Dia 17 de um mês até dia 17 do mês seguinte  
+- **PIX/Boleto**: Período mensal normal (1º ao último dia)
+
+#### **Divisão por Planos de Contas**
+- Separação automática entre gastos empresariais e pessoais
+- Agrupamento por código do plano de contas
+- Soma total por categoria
+
+#### **Exemplos de Uso:**
+
+```bash
+# Buscar fatura do Nu Bank para Janeiro/2025
+GET /api/bills?year=2025&month=1&account=Nu%20Bank%20Ketlyn
+
+# Período calculado automaticamente: 02/01/2025 a 02/02/2025
+
+# Buscar gastos com filtro de período vigente
+GET /api/expenses?year=2025&month=1&account=Nu%20Bank%20Ketlyn&billing_period=true
+```
 
 ### Estrutura de Arquivos Importante:
 
