@@ -11,6 +11,7 @@ const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const pdfkit = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
+const { pool, testConnection, closePool } = require('./config/db');
 require('dotenv').config();
 
 // --- 2. CONFIGURAÇÕES PRINCIPAIS ---
@@ -27,22 +28,36 @@ app.use(cors({
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- 4. CONFIGURAÇÃO DO BANCO DE DADOS ---
-let pool;
-try {
-    pool = mysql.createPool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0
+// --- 3.1. ROTA DE HEALTH CHECK ---
+app.get('/', (req, res) => {
+    res.status(200).json({ 
+        status: 'ok', 
+        message: 'Servidor de Controle de Gastos funcionando',
+        timestamp: new Date().toISOString()
     });
-} catch (error) {
-    console.error("ERRO CRÍTICO: Falha ao configurar o pool de conexão. Verifique as suas variáveis de ambiente.", error);
-    process.exit(1);
-}
+});
+
+app.get('/health', async (req, res) => {
+    try {
+        // Verificar conexão com o banco
+        const isConnected = await testConnection();
+        res.status(200).json({ 
+            status: 'healthy',
+            database: isConnected ? 'connected' : 'disconnected',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(503).json({ 
+            status: 'unhealthy',
+            database: 'disconnected',
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// --- 4. CONFIGURAÇÃO DO BANCO DE DADOS ---
+// Pool já configurado em config/db.js
 
 // --- 5. CONFIGURAÇÃO DO MULTER (UPLOAD DE FICHEIROS) ---
 const storage = multer.diskStorage({
@@ -916,18 +931,6 @@ app.post('/api/recurring-expenses/process', authenticateToken, async (req, res) 
     }
 });
 
-// --- 9. INICIALIZAÇÃO DO SERVIDOR ---
-app.listen(PORT, async () => {
-    try {
-        await pool.getConnection();
-        console.log('Conexão com o MySQL estabelecida com sucesso.');
-        console.log('Servidor a ser executado na porta ' + PORT);
-    } catch (error) {
-        console.error('ERRO CRÍTICO AO CONECTAR COM O BANCO DE DADOS:', error.message);
-        process.exit(1);
-    }
-});
-
 const billingPeriods = {
     'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
     'Nu Vainer': { startDay: 2, endDay: 1 },
@@ -1158,4 +1161,51 @@ app.use((error, req, res, next) => {
 // --- ROTA PARA ARQUIVOS ESTÁTICOS ---
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-module.exports = app;
+// --- 9. INICIALIZAÇÃO DO SERVIDOR ---
+if (require.main === module) {
+    const server = app.listen(PORT, async () => {
+        try {
+            const isConnected = await testConnection();
+            if (isConnected) {
+                console.log('✅ Conexão com o MySQL estabelecida com sucesso.');
+                console.log(`🚀 Servidor a ser executado na porta ${PORT}`);
+            } else {
+                console.error('❌ ERRO CRÍTICO AO CONECTAR COM O BANCO DE DADOS');
+                process.exit(1);
+            }
+        } catch (error) {
+            console.error('❌ ERRO CRÍTICO AO CONECTAR COM O BANCO DE DADOS:', error.message);
+            process.exit(1);
+        }
+    });
+
+    // Graceful shutdown para Railway
+    const shutdown = (signal) => {
+        console.log(`\n🛑 Recebido ${signal}. Encerrando servidor graciosamente...`);
+        
+        server.close(async () => {
+            console.log('📡 Servidor HTTP fechado.');
+            
+            try {
+                await closePool();
+            } catch (error) {
+                console.error('❌ Erro ao fechar conexões do banco:', error);
+            }
+            
+            console.log('✅ Processo encerrado com sucesso.');
+            process.exit(0);
+        });
+
+        // Force shutdown after 10 seconds
+        setTimeout(() => {
+            console.error('❌ Forçando encerramento após timeout.');
+            process.exit(1);
+        }, 10000);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    
+} else {
+    module.exports = app;
+}

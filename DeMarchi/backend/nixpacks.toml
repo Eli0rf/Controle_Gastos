@@ -1,0 +1,15 @@
+[providers]
+nodejs = "18.x"
+
+[build]
+cmds = [
+    "npm ci --only=production",
+    "npm rebuild canvas || echo 'Canvas rebuild failed, continuing without it'"
+]
+
+[start]
+cmd = "npm start"
+
+[variables]
+NPM_CONFIG_PRODUCTION = "true"
+NODE_ENV = "production"

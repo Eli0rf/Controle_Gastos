@@ -14,20 +14,32 @@ RUN apt-get update && apt-get install -y \
 # Definir diretório de trabalho
 WORKDIR /app
 
-# Copiar package files
+# Copiar package files primeiro para melhor cache do Docker
 COPY package*.json ./
 
 # Instalar dependências
-RUN npm install --production
+RUN npm ci --only=production && npm cache clean --force
 
 # Copiar código fonte
 COPY . .
 
-# Criar diretório de uploads
-RUN mkdir -p uploads
+# Criar diretório de uploads com permissões adequadas
+RUN mkdir -p uploads && chmod 755 uploads
+
+# Criar usuário não-root para segurança
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
 
 # Expor porta
 EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# Comando para iniciar o servidor
+CMD ["npm", "start"]
 
 # Comando de start
 CMD ["npm", "start"]

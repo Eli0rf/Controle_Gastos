@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "postinstall": "npm rebuild canvas || echo 'Canvas rebuild failed, continuing without it'"
+    "dev": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "npm rebuild canvas || echo 'Canvas rebuild failed, continuing without it'",
+    "build": "echo 'No build step required'"
   },
   "keywords": [],
   "author": "",

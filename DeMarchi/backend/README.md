@@ -1,32 +1,44 @@
 # Controle de Gastos - Backend
 
-## Deploy no Railway
+## ✅ Correções para Deploy no Railway
 
-### Problema Resolvido: Canvas/ChartJS
-O erro `invalid ELF header` relacionado ao canvas foi resolvido com as seguintes estratégias:
+### Problemas Resolvidos:
 
-1. **Fallback Graceful**: O sistema agora funciona sem gráficos caso o canvas não esteja disponível
-2. **Configuração Docker**: Dockerfile otimizado para instalar dependências nativas
-3. **Dependências Opcionais**: Canvas movido para dependências opcionais
+1. **SIGTERM Handling**: Implementado graceful shutdown para Railway
+2. **Health Check**: Endpoint `/health` para monitoramento
+3. **Estrutura de Código**: Reorganização do código para evitar erros de inicialização
+4. **Pool de Conexões**: Configuração robusta do MySQL com reconexão automática
+5. **Canvas/ChartJS**: Fallback graceful caso as dependências nativas falhem
 
 ### Configuração das Variáveis de Ambiente
 
 No Railway, configure as seguintes variáveis:
 
-```
+```env
 DB_HOST=seu_host_mysql
 DB_USER=seu_usuario
 DB_PASSWORD=sua_senha
 DB_NAME=nome_do_banco
-JWT_SECRET=sua_chave_secreta_jwt
+JWT_SECRET=sua_chave_secreta_jwt_super_segura
 NODE_ENV=production
+PORT=3000
 ```
 
-### Deploy
+### Deploy no Railway
 
-1. Conecte o repositório ao Railway
-2. Configure as variáveis de ambiente
-3. O deploy será automático
+1. **Conecte o repositório ao Railway**
+2. **Configure as variáveis de ambiente** (essenciais!)
+3. **O deploy será automático** usando nixpacks
+4. **Health check ativo** em `/health`
+
+### Melhorias Implementadas:
+
+- ✅ **Graceful Shutdown**: Responde corretamente aos sinais SIGTERM/SIGINT
+- ✅ **Health Checks**: Endpoints `/` e `/health` para monitoramento
+- ✅ **Robust Database**: Pool de conexões com reconexão automática
+- ✅ **Docker Optimizado**: Build mais eficiente e seguro
+- ✅ **Error Handling**: Tratamento robusto de erros
+- ✅ **Railway Configuration**: Arquivos de configuração específicos
 
 ### Funcionalidades
 
@@ -36,14 +48,30 @@ NODE_ENV=production
 - ✅ Relatórios PDF (com ou sem gráficos)
 - ✅ Gastos recorrentes
 - ✅ Health checks
+- ✅ CORS configurado
 
 ### Rotas Principais
 
 - `GET /` - Health check principal
-- `GET /health` - Status da aplicação
+- `GET /health` - Status detalhado da aplicação e banco
 - `POST /api/login` - Login
 - `POST /api/register` - Registro
 - `GET /api/expenses` - Listar gastos
 - `POST /api/expenses` - Criar gasto
 - `GET /api/reports/weekly` - Relatório semanal
-- `POST /api/reports/monthly` - Relatório mensal
+- `POST /api/reports/monthly` - Relatório mensal PDF
+- `GET /api/recurring-expenses` - Gastos recorrentes
+
+### Estrutura de Arquivos Importante:
+
+```
+backend/
+├── server.js              # Servidor principal com graceful shutdown
+├── config/db.js          # Configuração robusta do MySQL
+├── package.json          # Scripts otimizados
+├── railway.toml          # Configuração Railway
+├── nixpacks.toml         # Build configuration
+├── Dockerfile            # Container otimizado
+├── .dockerignore         # Exclusões do build
+└── .env.example          # Template das variáveis
+```
