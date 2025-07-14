@@ -59,13 +59,16 @@ document.addEventListener('DOMContentLoaded', function() {
     let allExpensesCache = [];
 
     function getToken() {
-        return localStorage.getItem('token');
+        const token = localStorage.getItem('token');
+        console.log('Token recuperado:', token ? 'Token presente' : 'Token ausente');
+        return token;
     }
 
     // Função para verificar se o usuário está autenticado
     function checkAuthentication() {
         const token = getToken();
         if (!token) {
+            console.log('Autenticação falhou - token ausente');
             showLogin();
             return false;
         }
@@ -75,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Função para lidar com erros de autenticação
     function handleAuthError(response) {
         if (response.status === 401 || response.status === 403) {
+            console.log('Erro de autenticação detectado:', response.status);
             showNotification('Sessão expirada. Faça login novamente.', 'error');
             localStorage.removeItem('token');
             localStorage.removeItem('username');
@@ -88,20 +92,31 @@ document.addEventListener('DOMContentLoaded', function() {
     async function authenticatedFetch(url, options = {}) {
         const token = getToken();
         if (!token) {
+            console.log('authenticatedFetch: Token não encontrado');
             showLogin();
             throw new Error('Token não encontrado');
         }
 
+        // Não sobrescrever Content-Type se for FormData
         const headers = {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
             ...options.headers
         };
+
+        // Só adicionar Content-Type se não for FormData
+        if (!(options.body instanceof FormData)) {
+            headers['Content-Type'] = 'application/json';
+        }
+
+        console.log('Fazendo request para:', url);
+        console.log('Headers:', headers);
 
         const response = await fetch(url, {
             ...options,
             headers
         });
+
+        console.log('Response status:', response.status);
 
         if (response.status === 401 || response.status === 403) {
             handleAuthError(response);
@@ -213,9 +228,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function fetchAllData() {
-        await fetchAndRenderExpenses();
-        await fetchAndRenderDashboardMetrics();
-        await fetchAndRenderGoalsChart();
+        try {
+            if (!checkAuthentication()) {
+                console.log('Autenticação falhou em fetchAllData');
+                return;
+            }
+
+            console.log('Iniciando fetchAllData...');
+            await fetchAndRenderExpenses();
+            await fetchAndRenderDashboardMetrics();
+            await fetchAndRenderGoalsChart();
+            console.log('fetchAllData concluído');
+        } catch (error) {
+            console.error('Erro em fetchAllData:', error);
+            showNotification('Erro ao carregar dados do dashboard', 'error');
+        }
     }
 
     // --- Busca tetos e renderiza gráfico de limites/alertas ---
@@ -836,15 +863,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function handleAddExpense(e) {
         e.preventDefault();
-        const formData = new FormData(addExpenseForm);
-        formData.set('is_business_expense', businessCheckbox.checked);
+        
         try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses`, { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }, body: formData });
-            if (!response.ok) { const err = await response.json(); throw new Error(err.message); }
+            if (!checkAuthentication()) return;
+
+            const formData = new FormData(addExpenseForm);
+            formData.set('is_business_expense', businessCheckbox.checked);
+            
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/expenses`, { 
+                method: 'POST', 
+                body: formData 
+            });
+            
+            if (!response.ok) { 
+                const err = await response.json(); 
+                throw new Error(err.message); 
+            }
+            
+            showNotification('Gasto adicionado com sucesso!', 'success');
             addExpenseForm.reset();
             toggleExpenseFields();
             fetchAllData();
-        } catch (error) { alert(`Erro: ${error.message}`); }
+        } catch (error) { 
+            console.error('Erro ao adicionar gasto:', error);
+            showNotification(`Erro: ${error.message}`, 'error');
+        }
     }
 
     function handleTableClick(e) {
@@ -854,20 +897,36 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function deleteExpense(id) {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
-            if (!response.ok) throw new Error('Falha ao apagar despesa.');
+            if (!checkAuthentication()) return;
+
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/expenses/${id}`, { 
+                method: 'DELETE' 
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Falha ao apagar despesa.');
+            }
+            
+            showNotification('Gasto removido com sucesso!', 'success');
             fetchAllData();
-        } catch (error) { alert(`Erro: ${error.message}`); }
+        } catch (error) { 
+            console.error('Erro ao deletar gasto:', error);
+            showNotification(`Erro: ${error.message}`, 'error');
+        }
     }
 
     async function handleWeeklyReportDownload() {
-        const token = getToken();
-        if (!token) return showLogin();
         try {
-            const response = await fetch(`${API_BASE_URL}/api/reports/weekly`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error('Erro ao gerar relatório semanal.');
+            if (!checkAuthentication()) return;
+
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/reports/weekly`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao gerar relatório semanal.');
+            }
+            
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -950,9 +1009,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if(submitButton) submitButton.disabled = true;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/reports/monthly`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/reports/monthly`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ year, month, account })
             });
             if (!response.ok) throw new Error('Falha ao gerar o relatório.');
@@ -1027,13 +1086,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ========== RELATÓRIO INTERATIVO ==========
     async function populateIrAccounts() {
-        const token = getToken();
-        if (!irAccount || !token) return;
+        if (!irAccount) return;
+        
         try {
-            const response = await fetch(`${API_BASE_URL}/api/accounts`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error('Erro ao buscar contas.');
+            if (!checkAuthentication()) return;
+
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/accounts`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao buscar contas.');
+            }
+            
             const accounts = await response.json();
             irAccount.innerHTML = '<option value="">Todas</option>';
             accounts.forEach(account => {
@@ -1045,6 +1109,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         } catch (error) {
+            console.error('Erro ao carregar contas IR:', error);
             showNotification('Erro ao carregar contas.', 'error');
         }
     }
@@ -1070,13 +1135,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     async function fetchIrData(year, month, account, type, category) {
-        const token = getToken();
+        if (!checkAuthentication()) return [];
+        
         year = parseInt(year, 10);
         month = parseInt(month, 10);
         const params = new URLSearchParams({ year, month });
         if (account) params.append('account', account);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/expenses?${params.toString()}`);
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Erro ao buscar despesas:', errorText);
@@ -1287,9 +1353,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             try {
-                const response = await fetch(
-                    `${API_BASE_URL}/api/expenses?account=${encodeURIComponent(account)}&start_date=${startDate.toISOString().slice(0, 10)}&end_date=${endDate.toISOString().slice(0, 10)}`,
-                    { headers: { Authorization: `Bearer ${getToken()}` } }
+                const response = await authenticatedFetch(
+                    `${API_BASE_URL}/api/expenses?account=${encodeURIComponent(account)}&start_date=${startDate.toISOString().slice(0, 10)}&end_date=${endDate.toISOString().slice(0, 10)}`
                 );
                 if (!response.ok) throw new Error('Erro ao buscar dados.');
                 const expenses = await response.json();
@@ -1413,13 +1478,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function loadRecurringExpenses() {
-        const token = getToken();
-        if (!token) return;
-
         try {
-            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/recurring-expenses`);
 
             if (!response.ok) throw new Error('Erro ao carregar gastos recorrentes');
 
@@ -1471,8 +1531,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function handleRecurringExpenseSubmit(e) {
         e.preventDefault();
-        const token = getToken();
-        if (!token) return;
 
         const formData = new FormData(recurringForm);
         const data = {
@@ -1491,11 +1549,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/recurring-expenses`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(data)
             });
@@ -1514,13 +1571,9 @@ document.addEventListener('DOMContentLoaded', function() {
     async function deleteRecurringExpense(id) {
         if (!confirm('Tem certeza que deseja remover este gasto recorrente?')) return;
 
-        const token = getToken();
-        if (!token) return;
-
         try {
-            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/recurring-expenses/${id}`, {
+                method: 'DELETE'
             });
 
             if (!response.ok) throw new Error('Erro ao remover gasto recorrente');
@@ -1534,9 +1587,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function processRecurringExpenses() {
-        const token = getToken();
-        if (!token) return;
-
         const year = filterYear.value;
         const month = filterMonth.value;
 
@@ -1546,11 +1596,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/recurring-expenses/process`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/recurring-expenses/process`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ year: parseInt(year), month: parseInt(month) })
             });
@@ -1633,12 +1682,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function fetchBusinessData(year, month) {
-        const token = getToken();
-        const response = await fetch(`${API_BASE_URL}/api/expenses?year=${year}&month=${month}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/expenses?year=${year}&month=${month}`);
         
-        if (!response.ok) throw new Error('Erro ao buscar dados');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Erro ao buscar dados');
+        }
         
         const allExpenses = await response.json();
         const businessExpenses = allExpenses.filter(expense => expense.is_business_expense);
@@ -1802,13 +1851,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function loadBusinessExpensesList() {
         try {
-            const token = getToken();
+            if (!checkAuthentication()) return;
+
             const year = filterYear.value;
             const month = filterMonth.value;
             
-            const response = await fetch(`${API_BASE_URL}/api/expenses?year=${year}&month=${month}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/expenses?year=${year}&month=${month}`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao buscar gastos');
+            }
             
             const expenses = await response.json();
             const businessExpenses = expenses.filter(exp => exp.is_business_expense);
@@ -1816,6 +1869,7 @@ document.addEventListener('DOMContentLoaded', function() {
             displayBusinessExpensesList(businessExpenses);
         } catch (error) {
             console.error('Erro ao carregar lista de gastos empresariais:', error);
+            showNotification('Erro ao carregar gastos empresariais', 'error');
         }
     }
 
@@ -1911,30 +1965,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ========== INICIALIZAÇÃO AUTOMÁTICA ==========
     // Verificar se o usuário já está logado quando a página carrega
-    function init() {
+    async function init() {
         addEventListeners();
         
         const token = getToken();
         if (token) {
-            // Verificar se o token ainda é válido
-            fetch(`${API_BASE_URL}/api/accounts`, {
-                headers: { Authorization: `Bearer ${token}` }
-            })
-            .then(response => {
+            try {
+                // Verificar se o token ainda é válido
+                console.log('Verificando token...');
+                const response = await authenticatedFetch(`${API_BASE_URL}/api/accounts`);
+                
                 if (response.ok) {
+                    console.log('Token válido, mostrando dashboard');
                     showDashboard();
                 } else {
+                    console.log('Token inválido, limpando e mostrando login');
                     // Token inválido, limpar e mostrar login
                     localStorage.removeItem('token');
                     localStorage.removeItem('username');
                     showLogin();
                 }
-            })
-            .catch(() => {
-                // Erro de rede, mostrar login
+            } catch (error) {
+                console.log('Erro ao verificar token, mostrando login:', error);
+                // Erro de rede ou autenticação, mostrar login
                 showLogin();
-            });
+            }
         } else {
+            console.log('Nenhum token encontrado, mostrando login');
             showLogin();
         }
     }
