@@ -160,6 +160,204 @@
             font-size: 0.75rem;
             font-weight: 500;
         }
+        
+        /* Invoice Tab Styles */
+        .invoice-status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .invoice-status-ongoing {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .invoice-status-finished {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .invoice-status-ending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .invoice-account-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+        .invoice-account-card:hover {
+            border-left-color: #8b5cf6;
+            transform: translateX(2px);
+        }
+        .invoice-alert {
+            border-left: 4px solid #ef4444;
+            background: #fef2f2;
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { background-color: #fef2f2; }
+            50% { background-color: #fee2e2; }
+        }
+        .invoice-warning {
+            border-left: 4px solid #f59e0b;
+            background: #fffbeb;
+        }
+        .invoice-table-row:hover {
+            background: #f8fafc;
+        }
+
+        /* Estilos para botões de filtro */
+        .filter-type-btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+            background-color: white;
+            color: #6b7280;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+        }
+
+        .filter-type-btn:hover {
+            border-color: #d1d5db;
+            background-color: #f9fafb;
+        }
+
+        .filter-type-btn.active {
+            border-color: #8b5cf6;
+            background-color: #8b5cf6;
+            color: white;
+        }
+
+        .filter-section {
+            transition: all 0.3s ease;
+        }
+
+        .filter-section.hidden {
+            display: none;
+        }
+
+        /* Estilos específicos para campos de período */
+        #period-info {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Estilos responsivos para filtros */
+        @media (max-width: 768px) {
+            .filter-type-btn {
+                font-size: 0.75rem;
+                padding: 0.375rem 0.75rem;
+            }
+            
+            .filter-type-btn i {
+                display: none;
+            }
+        }
+
+        /* Estilos para filtro dia/mês */
+        .account-period-config {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .account-period-config:hover {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+        }
+
+        .account-period-config.active {
+            background: #eff6ff;
+            border-color: #3b82f6;
+        }
+
+        .remove-period-btn {
+            background: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            transition: all 0.3s ease;
+        }
+
+        .remove-period-btn:hover {
+            background: #fecaca;
+            border-color: #f87171;
+        }
+
+        .plan-summary-item {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .plan-summary-item:hover {
+            background: #f3f4f6;
+            transform: translateX(2px);
+        }
+
+        .plan-summary-item .plan-code {
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .plan-summary-item .plan-value {
+            font-weight: 700;
+            color: #059669;
+        }
+
+        .business-summary-item {
+            background: #fdf4ff;
+            border: 1px solid #e9d5ff;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            transition: all 0.3s ease;
+        }
+
+        .business-summary-item:hover {
+            background: #f3e8ff;
+            transform: translateX(2px);
+        }
+
+        .account-detail-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .account-detail-card:hover {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .period-badge {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -229,6 +427,9 @@
                     </button>
                     <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="expenses">
                         <i class="fas fa-list mr-2"></i>📝 Gastos
+                    </button>
+                    <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="invoices">
+                        <i class="fas fa-receipt mr-2"></i>🧾 Faturas
                     </button>
                     <button class="tab-button flex-1 px-6 py-4 text-center font-medium transition-all duration-300 hover:bg-gray-50" data-tab="reports">
                         <i class="fas fa-chart-bar mr-2"></i>📈 Relatórios
@@ -909,6 +1110,557 @@
                         </div>
                     </form>
                     <div id="billing-results" class="mt-6"></div>
+                </div>
+            </div>
+
+            <!-- Aba Faturas -->
+            <div id="invoices-tab" class="tab-content hidden">
+                <!-- Header da Aba Faturas -->
+                <div class="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 rounded-lg shadow-lg mb-8">
+                    <h2 class="text-2xl font-bold mb-2">🧾 Controle de Faturas por Data de Término</h2>
+                    <p class="text-purple-100">Visualize gastos por data de término de parcelas, organizados por conta e status</p>
+                </div>
+
+                <!-- Filtros de Faturas -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">🔍 Filtros de Fatura</h3>
+                    
+                    <!-- Tipo de Filtro -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium mb-2">Tipo de Filtro</label>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="filter-type-btn active" data-filter-type="simple">
+                                <i class="fas fa-filter mr-2"></i>Filtro Simples
+                            </button>
+                            <button type="button" class="filter-type-btn" data-filter-type="monthly">
+                                <i class="fas fa-calendar-alt mr-2"></i>Por Meses
+                            </button>
+                            <button type="button" class="filter-type-btn" data-filter-type="period">
+                                <i class="fas fa-calendar-week mr-2"></i>Por Períodos Vigentes
+                            </button>
+                            <button type="button" class="filter-type-btn" data-filter-type="day-month">
+                                <i class="fas fa-calendar-day mr-2"></i>Por Dia/Mês Específico
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtro Simples (padrão) -->
+                    <div id="simple-filter" class="filter-section">
+                        <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium">Ano</label>
+                                <select id="invoice-year" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <!-- Preenchido via JS -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Mês</label>
+                                <select id="invoice-month" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Todos os meses</option>
+                                    <option value="1">Janeiro</option>
+                                    <option value="2">Fevereiro</option>
+                                    <option value="3">Março</option>
+                                    <option value="4">Abril</option>
+                                    <option value="5">Maio</option>
+                                    <option value="6">Junho</option>
+                                    <option value="7">Julho</option>
+                                    <option value="8">Agosto</option>
+                                    <option value="9">Setembro</option>
+                                    <option value="10">Outubro</option>
+                                    <option value="11">Novembro</option>
+                                    <option value="12">Dezembro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Conta</label>
+                                <select id="invoice-account" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Todas as contas</option>
+                                    <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
+                                    <option value="Nu Vainer">Nu Vainer</option>
+                                    <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
+                                    <option value="PicPay Vainer">PicPay Vainer</option>
+                                    <option value="Ducatto">Ducatto</option>
+                                    <option value="Master">Master</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Status</label>
+                                <select id="invoice-status" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Todos</option>
+                                    <option value="em-andamento">Em Andamento</option>
+                                    <option value="finalizado">Finalizado</option>
+                                    <option value="vencendo">Vencendo (30 dias)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Buscar</label>
+                                <input type="text" id="invoice-search" placeholder="Descrição..." class="mt-1 block w-full p-2 border rounded-lg">
+                            </div>
+                            <div class="flex items-end">
+                                <button id="filter-invoices-btn" class="bg-purple-600 text-white px-6 py-2 rounded-lg w-full hover:bg-purple-700 transition-colors">
+                                    <i class="fas fa-search mr-2"></i>Filtrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filtro por Meses -->
+                    <div id="monthly-filter" class="filter-section hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium">Ano Base</label>
+                                <select id="monthly-year" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <!-- Preenchido via JS -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Mês Inicial</label>
+                                <select id="monthly-start" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="1">Janeiro</option>
+                                    <option value="2">Fevereiro</option>
+                                    <option value="3">Março</option>
+                                    <option value="4">Abril</option>
+                                    <option value="5">Maio</option>
+                                    <option value="6">Junho</option>
+                                    <option value="7">Julho</option>
+                                    <option value="8">Agosto</option>
+                                    <option value="9">Setembro</option>
+                                    <option value="10">Outubro</option>
+                                    <option value="11">Novembro</option>
+                                    <option value="12">Dezembro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Mês Final</label>
+                                <select id="monthly-end" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="1">Janeiro</option>
+                                    <option value="2">Fevereiro</option>
+                                    <option value="3">Março</option>
+                                    <option value="4">Abril</option>
+                                    <option value="5">Maio</option>
+                                    <option value="6">Junho</option>
+                                    <option value="7">Julho</option>
+                                    <option value="8">Agosto</option>
+                                    <option value="9">Setembro</option>
+                                    <option value="10">Outubro</option>
+                                    <option value="11">Novembro</option>
+                                    <option value="12">Dezembro</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button id="filter-monthly-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg w-full hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-calendar-alt mr-2"></i>Filtrar Período
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium">Conta</label>
+                                <select id="monthly-account" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Todas as contas</option>
+                                    <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
+                                    <option value="Nu Vainer">Nu Vainer</option>
+                                    <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
+                                    <option value="PicPay Vainer">PicPay Vainer</option>
+                                    <option value="Ducatto">Ducatto</option>
+                                    <option value="Master">Master</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Buscar</label>
+                                <input type="text" id="monthly-search" placeholder="Descrição..." class="mt-1 block w-full p-2 border rounded-lg">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filtro por Períodos Vigentes -->
+                    <div id="period-filter" class="filter-section hidden">
+                        <div class="mb-4">
+                            <h4 class="text-lg font-medium text-gray-700 mb-2">📅 Selecionar Períodos Vigentes</h4>
+                            <p class="text-sm text-gray-600">Selecione um ou mais períodos para analisar faturas que terminam nesses intervalos</p>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium">Período Base</label>
+                                <select id="period-base" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="current">Período Atual</option>
+                                    <option value="next">Próximo Período</option>
+                                    <option value="previous">Período Anterior</option>
+                                    <option value="custom">Personalizado</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Duração do Período</label>
+                                <select id="period-duration" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="30">30 dias</option>
+                                    <option value="60">60 dias</option>
+                                    <option value="90">90 dias</option>
+                                    <option value="120">120 dias</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button id="filter-period-btn" class="bg-green-600 text-white px-6 py-2 rounded-lg w-full hover:bg-green-700 transition-colors">
+                                    <i class="fas fa-calendar-week mr-2"></i>Aplicar Período
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Período Personalizado -->
+                        <div id="custom-period-fields" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium">Data Inicial</label>
+                                <input type="date" id="period-start-date" class="mt-1 block w-full p-2 border rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Data Final</label>
+                                <input type="date" id="period-end-date" class="mt-1 block w-full p-2 border rounded-lg">
+                            </div>
+                        </div>
+
+                        <!-- Filtros Adicionais para Período -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium">Conta</label>
+                                <select id="period-account" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Todas as contas</option>
+                                    <option value="Nu Bank Ketlyn">Nu Bank Ketlyn</option>
+                                    <option value="Nu Vainer">Nu Vainer</option>
+                                    <option value="Ourocard Ketlyn">Ourocard Ketlyn</option>
+                                    <option value="PicPay Vainer">PicPay Vainer</option>
+                                    <option value="Ducatto">Ducatto</option>
+                                    <option value="Master">Master</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Status</label>
+                                <select id="period-status" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Todos os status</option>
+                                    <option value="em-andamento">Em Andamento</option>
+                                    <option value="vencendo">Vencendo</option>
+                                    <option value="finalizado">Finalizado</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Buscar</label>
+                                <input type="text" id="period-search" placeholder="Descrição..." class="mt-1 block w-full p-2 border rounded-lg">
+                            </div>
+                        </div>
+
+                        <!-- Visualização do Período Selecionado -->
+                        <div id="period-info" class="hidden mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <h5 class="font-medium text-blue-700 mb-2">📊 Período Selecionado</h5>
+                            <p id="period-description" class="text-sm text-blue-600"></p>
+                        </div>
+                    </div>
+
+                    <!-- Filtro por Dia/Mês Específico -->
+                    <div id="day-month-filter" class="filter-section hidden">
+                        <div class="mb-4">
+                            <h4 class="text-lg font-medium text-gray-700 mb-2">📅 Filtro por Dia/Mês Específico</h4>
+                            <p class="text-sm text-gray-600">Configure períodos específicos por conta (ex: Nu Bank do dia 2 ao 2, Ourocard do dia 17 ao 17)</p>
+                        </div>
+
+                        <!-- Configuração Global -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div>
+                                <label class="block text-sm font-medium">Ano de Referência</label>
+                                <select id="daymonth-year" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <!-- Preenchido via JS -->
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Mês de Referência</label>
+                                <select id="daymonth-month" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Selecione o mês</option>
+                                    <option value="1">Janeiro</option>
+                                    <option value="2">Fevereiro</option>
+                                    <option value="3">Março</option>
+                                    <option value="4">Abril</option>
+                                    <option value="5">Maio</option>
+                                    <option value="6">Junho</option>
+                                    <option value="7">Julho</option>
+                                    <option value="8">Agosto</option>
+                                    <option value="9">Setembro</option>
+                                    <option value="10">Outubro</option>
+                                    <option value="11">Novembro</option>
+                                    <option value="12">Dezembro</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button id="add-account-period-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg w-full hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-plus mr-2"></i>Adicionar Conta
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Container para Configurações de Conta -->
+                        <div id="account-periods-container" class="space-y-4 mb-6">
+                            <!-- Configurações de conta serão adicionadas dinamicamente -->
+                        </div>
+
+                        <!-- Exemplo pré-configurado -->
+                        <div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                            <h5 class="font-medium text-gray-700 mb-3">📋 Exemplo: Configuração Padrão</h5>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button type="button" id="preset-nubank-2-2" class="bg-purple-100 border border-purple-300 text-purple-700 px-4 py-2 rounded-lg hover:bg-purple-200 transition-colors">
+                                    🏦 Nu Bank: Dia 2 ao 2
+                                </button>
+                                <button type="button" id="preset-ourocard-17-17" class="bg-yellow-100 border border-yellow-300 text-yellow-700 px-4 py-2 rounded-lg hover:bg-yellow-200 transition-colors">
+                                    💳 Ourocard: Dia 17 ao 17
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filtros Adicionais -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-sm font-medium">Tipo de Gasto</label>
+                                <select id="daymonth-expense-type" class="mt-1 block w-full p-2 border rounded-lg">
+                                    <option value="">Todos os tipos</option>
+                                    <option value="personal">Pessoal</option>
+                                    <option value="business">Empresarial</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium">Buscar</label>
+                                <input type="text" id="daymonth-search" placeholder="Descrição..." class="mt-1 block w-full p-2 border rounded-lg">
+                            </div>
+                        </div>
+
+                        <!-- Botão de Aplicar Filtro -->
+                        <div class="text-center">
+                            <button id="filter-daymonth-btn" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium">
+                                <i class="fas fa-filter mr-2"></i>Aplicar Filtro por Dia/Mês
+                            </button>
+                        </div>
+
+                        <!-- Resumo da Configuração -->
+                        <div id="daymonth-config-summary" class="hidden mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <h5 class="font-medium text-blue-700 mb-2">📊 Configuração Atual</h5>
+                            <div id="daymonth-config-list" class="text-sm text-blue-600"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resultados do Filtro Dia/Mês -->
+                <div id="daymonth-results" class="hidden">
+                    <!-- Resumo Geral -->
+                    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📊 Resumo Geral do Período</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <div class="bg-gradient-to-br from-blue-500 to-blue-300 p-6 rounded-2xl shadow-lg">
+                                <div class="flex items-center gap-4">
+                                    <span class="text-4xl">💰</span>
+                                    <div>
+                                        <h3 class="font-semibold text-white text-sm">Total Geral</h3>
+                                        <p id="daymonth-total-general" class="text-2xl font-bold text-white">R$ 0,00</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-gradient-to-br from-green-500 to-green-300 p-6 rounded-2xl shadow-lg">
+                                <div class="flex items-center gap-4">
+                                    <span class="text-4xl">🏠</span>
+                                    <div>
+                                        <h3 class="font-semibold text-white text-sm">Gastos Pessoais</h3>
+                                        <p id="daymonth-total-personal" class="text-2xl font-bold text-white">R$ 0,00</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-gradient-to-br from-purple-500 to-purple-300 p-6 rounded-2xl shadow-lg">
+                                <div class="flex items-center gap-4">
+                                    <span class="text-4xl">💼</span>
+                                    <div>
+                                        <h3 class="font-semibold text-white text-sm">Gastos Empresariais</h3>
+                                        <p id="daymonth-total-business" class="text-2xl font-bold text-white">R$ 0,00</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-gradient-to-br from-orange-500 to-orange-300 p-6 rounded-2xl shadow-lg">
+                                <div class="flex items-center gap-4">
+                                    <span class="text-4xl">📊</span>
+                                    <div>
+                                        <h3 class="font-semibold text-white text-sm">Transações</h3>
+                                        <p id="daymonth-total-count" class="text-2xl font-bold text-white">0</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Resumo por Plano de Conta -->
+                    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📋 Resumo por Plano de Conta</h3>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="font-semibold text-blue-600 mb-4">🏠 Gastos Pessoais por Plano</h4>
+                                <div id="daymonth-personal-plans" class="space-y-3">
+                                    <!-- Preenchido dinamicamente -->
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-purple-600 mb-4">💼 Gastos Empresariais</h4>
+                                <div id="daymonth-business-summary" class="space-y-3">
+                                    <!-- Preenchido dinamicamente -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Resumo por Conta e Período -->
+                    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">🏦 Detalhamento por Conta</h3>
+                        <div id="daymonth-accounts-detail" class="space-y-6">
+                            <!-- Preenchido dinamicamente -->
+                        </div>
+                    </div>
+
+                    <!-- Gráficos -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="text-xl font-semibold text-gray-700 mb-4">📊 Distribuição por Plano de Conta</h3>
+                            <canvas id="daymonth-plans-chart"></canvas>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="text-xl font-semibold text-gray-700 mb-4">🏦 Distribuição por Conta</h3>
+                            <canvas id="daymonth-accounts-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Tabela Detalhada -->
+                    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-semibold text-gray-700">📋 Detalhamento Completo</h3>
+                            <div class="flex gap-2">
+                                <button id="export-daymonth-csv" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 transition-colors">
+                                    <i class="fas fa-file-csv mr-1"></i>Exportar CSV
+                                </button>
+                                <button id="export-daymonth-pdf" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition-colors">
+                                    <i class="fas fa-file-pdf mr-1"></i>Exportar PDF
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="p-3 font-medium">Data</th>
+                                        <th class="p-3 font-medium">Descrição</th>
+                                        <th class="p-3 font-medium">Valor</th>
+                                        <th class="p-3 font-medium">Conta</th>
+                                        <th class="p-3 font-medium">Tipo</th>
+                                        <th class="p-3 font-medium">Plano de Conta</th>
+                                        <th class="p-3 font-medium">Parcelas</th>
+                                        <th class="p-3 font-medium">Período</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="daymonth-details-table">
+                                    <!-- Preenchido dinamicamente -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resumo das Faturas -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-gradient-to-br from-green-500 to-green-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">💰</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">Total Filtrado</h3>
+                                <p id="invoice-total-filtered" class="text-2xl font-bold text-white">R$ 0,00</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-blue-500 to-blue-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">📊</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">Parcelas</h3>
+                                <p id="invoice-count-filtered" class="text-2xl font-bold text-white">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-orange-500 to-orange-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">⏳</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">Em Andamento</h3>
+                                <p id="invoice-ongoing-count" class="text-2xl font-bold text-white">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-yellow-500 to-yellow-300 p-6 rounded-2xl shadow-lg">
+                        <div class="flex items-center gap-4">
+                            <span class="text-4xl">⚠️</span>
+                            <div>
+                                <h3 class="font-semibold text-white text-sm">Vencendo</h3>
+                                <p id="invoice-ending-count" class="text-2xl font-bold text-white">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráficos de Faturas -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">📈 Evolução das Faturas</h3>
+                        <canvas id="invoice-evolution-chart"></canvas>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4">🏦 Distribuição por Conta</h3>
+                        <canvas id="invoice-account-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Seções por Conta -->
+                <div id="invoice-accounts-container">
+                    <!-- Container será preenchido dinamicamente -->
+                </div>
+
+                <!-- Detalhamento Global de Faturas -->
+                <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-semibold text-gray-700">📋 Detalhamento de Faturas</h3>
+                        <div class="flex gap-2">
+                            <button id="export-invoices-csv" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 transition-colors">
+                                <i class="fas fa-file-csv mr-1"></i>Exportar CSV
+                            </button>
+                            <button id="export-invoices-pdf" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition-colors">
+                                <i class="fas fa-file-pdf mr-1"></i>Exportar PDF
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="p-3 font-medium">Data Compra</th>
+                                    <th class="p-3 font-medium">Descrição</th>
+                                    <th class="p-3 font-medium">Valor Total</th>
+                                    <th class="p-3 font-medium">Conta</th>
+                                    <th class="p-3 font-medium">Parcelas</th>
+                                    <th class="p-3 font-medium">Data Término</th>
+                                    <th class="p-3 font-medium">Status</th>
+                                    <th class="p-3 font-medium">Dias Restantes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invoice-details-table">
+                                <!-- Preenchido dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Alertas de Vencimento -->
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">⚠️ Alertas de Vencimento</h3>
+                    <div id="invoice-alerts" class="space-y-4">
+                        <!-- Alertas serão preenchidos dinamicamente -->
+                    </div>
                 </div>
             </div>
         </main>

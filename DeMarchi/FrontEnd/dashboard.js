@@ -1648,6 +1648,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Load specific content based on tab
                     if (targetTab === 'business-analysis') {
                         loadBusinessAnalysis();
+                    } else if (targetTab === 'invoices') {
+                        loadInvoicesAnalysis();
                     }
                 }
             });
@@ -1995,6 +1997,782 @@ document.addEventListener('DOMContentLoaded', function() {
             showLogin();
         }
     }
+
+    // ========== ANÁLISE DE FATURAS ==========
+    
+    let currentFilterType = 'simple';
+    
+    async function loadInvoicesAnalysis() {
+        try {
+            console.log('Carregando análise de faturas...');
+            
+            // Inicializar filtros
+            initializeInvoiceFilters();
+            populateInvoiceFilters();
+            
+            // Carregar dados iniciais
+            await filterInvoices();
+            
+        } catch (error) {
+            console.error('Erro ao carregar análise de faturas:', error);
+            showNotification('Erro ao carregar dados de faturas', 'error');
+        }
+    }
+
+    function initializeInvoiceFilters() {
+        // Configurar botões de tipo de filtro
+        const filterTypeBtns = document.querySelectorAll('.filter-type-btn');
+        filterTypeBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const filterType = this.dataset.filterType;
+                switchFilterType(filterType);
+            });
+        });
+
+        // Configurar campo de período personalizado
+        const periodBase = document.getElementById('period-base');
+        if (periodBase) {
+            periodBase.addEventListener('change', function() {
+                const customFields = document.getElementById('custom-period-fields');
+                if (this.value === 'custom') {
+                    customFields.classList.remove('hidden');
+                } else {
+                    customFields.classList.add('hidden');
+                }
+            });
+        }
+
+        // Configurar valores padrão para filtro mensal
+        const currentDate = new Date();
+        const monthlyYear = document.getElementById('monthly-year');
+        const monthlyStart = document.getElementById('monthly-start');
+        const monthlyEnd = document.getElementById('monthly-end');
+
+        if (monthlyStart) monthlyStart.value = '1'; // Janeiro
+        if (monthlyEnd) monthlyEnd.value = '12'; // Dezembro
+    }
+
+    function switchFilterType(filterType) {
+        currentFilterType = filterType;
+        
+        // Atualizar botões ativos
+        document.querySelectorAll('.filter-type-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-filter-type="${filterType}"]`).classList.add('active');
+
+        // Mostrar/ocultar seções de filtro
+        document.querySelectorAll('.filter-section').forEach(section => {
+            section.classList.add('hidden');
+        });
+
+        const targetSection = document.getElementById(`${filterType}-filter`);
+        if (targetSection) {
+            targetSection.classList.remove('hidden');
+        }
+
+        // Aplicar filtro automaticamente
+        setTimeout(() => {
+            if (filterType === 'simple') {
+                filterInvoices();
+            } else if (filterType === 'monthly') {
+                filterInvoicesByMonth();
+            } else if (filterType === 'period') {
+                filterInvoicesByPeriod();
+            }
+        }, 100);
+    }
+
+    function populateInvoiceFilters() {
+        const currentYear = new Date().getFullYear();
+        
+        // Preencher anos para filtros simples e mensais
+        const yearSelects = ['invoice-year', 'monthly-year'];
+        yearSelects.forEach(selectId => {
+            const yearSelect = document.getElementById(selectId);
+            if (!yearSelect) return;
+            
+            yearSelect.innerHTML = '<option value="">Todos os anos</option>';
+            for (let year = currentYear; year >= currentYear - 5; year--) {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                if (year === currentYear && selectId === 'invoice-year') option.selected = true;
+                if (year === currentYear && selectId === 'monthly-year') option.selected = true;
+                yearSelect.appendChild(option);
+            }
+        });
+    }
+
+    async function filterInvoices() {
+        if (currentFilterType === 'monthly') {
+            return await filterInvoicesByMonth();
+        } else if (currentFilterType === 'period') {
+            return await filterInvoicesByPeriod();
+        }
+        
+        // Filtro simples (padrão)
+        try {
+            const year = document.getElementById('invoice-year')?.value || '';
+            const month = document.getElementById('invoice-month')?.value || '';
+            const account = document.getElementById('invoice-account')?.value || '';
+            const status = document.getElementById('invoice-status')?.value || '';
+            const search = document.getElementById('invoice-search')?.value || '';
+
+            console.log('Filtrando faturas (simples):', { year, month, account, status, search });
+
+            const expenses = await fetchExpensesForInvoices(year, month, account);
+            const invoiceData = processInvoicesData(expenses, status, search);
+            
+            updateInvoiceInterface(invoiceData);
+
+        } catch (error) {
+            console.error('Erro ao filtrar faturas:', error);
+            showNotification('Erro ao carregar dados de faturas', 'error');
+        }
+    }
+
+    async function filterInvoicesByMonth() {
+        try {
+            const year = document.getElementById('monthly-year')?.value || new Date().getFullYear();
+            const startMonth = parseInt(document.getElementById('monthly-start')?.value || '1');
+            const endMonth = parseInt(document.getElementById('monthly-end')?.value || '12');
+            const account = document.getElementById('monthly-account')?.value || '';
+            const search = document.getElementById('monthly-search')?.value || '';
+
+            console.log('Filtrando faturas por meses:', { year, startMonth, endMonth, account, search });
+
+            // Buscar gastos para todo o ano
+            const expenses = await fetchExpensesForInvoices(year, '', account);
+            
+            // Filtrar por período de meses das datas de término
+            const filteredExpenses = expenses.filter(expense => {
+                if (!expense.total_installments || parseInt(expense.total_installments) <= 1) return false;
+                
+                const purchaseDate = new Date(expense.transaction_date);
+                const totalInstallments = parseInt(expense.total_installments);
+                const endDate = new Date(purchaseDate);
+                endDate.setMonth(endDate.getMonth() + totalInstallments - 1);
+                
+                const endMonth = endDate.getMonth() + 1; // getMonth() retorna 0-11
+                return endMonth >= startMonth && endMonth <= endMonth;
+            });
+
+            const invoiceData = processInvoicesData(filteredExpenses, '', search);
+            updateInvoiceInterface(invoiceData);
+            
+            // Mostrar informação do período selecionado
+            showPeriodInfo(`Meses ${startMonth} a ${endMonth} de ${year}`);
+
+        } catch (error) {
+            console.error('Erro ao filtrar por meses:', error);
+            showNotification('Erro ao filtrar por meses', 'error');
+        }
+    }
+
+    async function filterInvoicesByPeriod() {
+        try {
+            const periodBase = document.getElementById('period-base')?.value || 'current';
+            const duration = parseInt(document.getElementById('period-duration')?.value || '30');
+            const account = document.getElementById('period-account')?.value || '';
+            const status = document.getElementById('period-status')?.value || '';
+            const search = document.getElementById('period-search')?.value || '';
+
+            console.log('Filtrando faturas por período:', { periodBase, duration, account, status, search });
+
+            let startDate, endDate;
+            const today = new Date();
+
+            if (periodBase === 'custom') {
+                const startInput = document.getElementById('period-start-date')?.value;
+                const endInput = document.getElementById('period-end-date')?.value;
+                
+                if (!startInput || !endInput) {
+                    showNotification('Por favor, selecione as datas de início e fim', 'warning');
+                    return;
+                }
+                
+                startDate = new Date(startInput);
+                endDate = new Date(endInput);
+            } else {
+                // Calcular período baseado na seleção
+                if (periodBase === 'current') {
+                    startDate = new Date(today);
+                    endDate = new Date(today);
+                    endDate.setDate(endDate.getDate() + duration);
+                } else if (periodBase === 'next') {
+                    startDate = new Date(today);
+                    startDate.setDate(startDate.getDate() + duration);
+                    endDate = new Date(startDate);
+                    endDate.setDate(endDate.getDate() + duration);
+                } else if (periodBase === 'previous') {
+                    endDate = new Date(today);
+                    startDate = new Date(today);
+                    startDate.setDate(startDate.getDate() - duration);
+                }
+            }
+
+            // Buscar gastos sem filtro de data específico
+            const expenses = await fetchExpensesForInvoices('', '', account);
+            
+            // Filtrar por período de término das parcelas
+            const filteredExpenses = expenses.filter(expense => {
+                if (!expense.total_installments || parseInt(expense.total_installments) <= 1) return false;
+                
+                const purchaseDate = new Date(expense.transaction_date);
+                const totalInstallments = parseInt(expense.total_installments);
+                const expenseEndDate = new Date(purchaseDate);
+                expenseEndDate.setMonth(expenseEndDate.getMonth() + totalInstallments - 1);
+                
+                return expenseEndDate >= startDate && expenseEndDate <= endDate;
+            });
+
+            const invoiceData = processInvoicesData(filteredExpenses, status, search);
+            updateInvoiceInterface(invoiceData);
+            
+            // Mostrar informação do período selecionado
+            const periodDesc = `${startDate.toLocaleDateString('pt-BR')} a ${endDate.toLocaleDateString('pt-BR')} (${duration} dias)`;
+            showPeriodInfo(periodDesc);
+
+        } catch (error) {
+            console.error('Erro ao filtrar por período:', error);
+            showNotification('Erro ao filtrar por período', 'error');
+        }
+    }
+
+    async function fetchExpensesForInvoices(year, month, account) {
+        let url = `${API_BASE_URL}/api/expenses`;
+        const params = new URLSearchParams();
+        
+        if (year) params.append('year', year);
+        if (month) params.append('month', month);
+        if (account) params.append('account', account);
+        
+        if (params.toString()) {
+            url += '?' + params.toString();
+        }
+
+        const response = await authenticatedFetch(url);
+        if (!response.ok) throw new Error('Erro ao buscar gastos');
+        
+        return await response.json();
+    }
+
+    function processInvoicesData(expenses, statusFilter, searchFilter) {
+        // Filtrar apenas gastos com parcelas
+        let expensesWithInstallments = expenses.filter(expense => 
+            expense.total_installments && parseInt(expense.total_installments) > 1
+        );
+
+        // Aplicar filtro de busca se especificado
+        if (searchFilter) {
+            expensesWithInstallments = expensesWithInstallments.filter(expense =>
+                expense.description.toLowerCase().includes(searchFilter.toLowerCase())
+            );
+        }
+
+        // Calcular dados das faturas
+        return calculateInvoiceData(expensesWithInstallments, statusFilter);
+    }
+
+    function updateInvoiceInterface(invoiceData) {
+        updateInvoiceSummary(invoiceData);
+        updateInvoiceCharts(invoiceData);
+        updateInvoiceAccountCards(invoiceData);
+        updateInvoiceDetailsTable(invoiceData.filteredExpenses);
+        updateInvoiceAlerts(invoiceData.alerts);
+    }
+
+    function showPeriodInfo(description) {
+        const periodInfo = document.getElementById('period-info');
+        const periodDescription = document.getElementById('period-description');
+        
+        if (periodInfo && periodDescription) {
+            periodDescription.textContent = description;
+            periodInfo.classList.remove('hidden');
+        }
+    }
+
+    function calculateInvoiceData(expenses, statusFilter) {
+        const today = new Date();
+        
+        const processedExpenses = expenses.map(expense => {
+            const purchaseDate = new Date(expense.transaction_date);
+            const totalInstallments = parseInt(expense.total_installments) || 1;
+            
+            // Calcular data de término (último mês da parcela)
+            const endDate = new Date(purchaseDate);
+            endDate.setMonth(endDate.getMonth() + totalInstallments - 1);
+            
+            // Determinar status
+            let status = 'finalizado';
+            let daysRemaining = 0;
+            
+            if (endDate > today) {
+                const daysUntilEnd = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+                daysRemaining = daysUntilEnd;
+                
+                if (daysUntilEnd <= 30) {
+                    status = 'vencendo';
+                } else {
+                    status = 'em-andamento';
+                }
+            }
+            
+            return {
+                ...expense,
+                endDate: endDate.toISOString().split('T')[0],
+                status,
+                daysRemaining,
+                installmentValue: parseFloat(expense.amount),
+                totalValue: parseFloat(expense.amount) * totalInstallments
+            };
+        });
+
+        // Filtrar por status se especificado
+        let filteredExpenses = processedExpenses;
+        if (statusFilter) {
+            filteredExpenses = processedExpenses.filter(exp => exp.status === statusFilter);
+        }
+
+        // Agrupar por conta
+        const byAccount = filteredExpenses.reduce((acc, expense) => {
+            if (!acc[expense.account]) {
+                acc[expense.account] = [];
+            }
+            acc[expense.account].push(expense);
+            return acc;
+        }, {});
+
+        // Calcular totais
+        const totalFiltered = filteredExpenses.reduce((sum, exp) => sum + exp.totalValue, 0);
+        const ongoingCount = processedExpenses.filter(exp => exp.status === 'em-andamento').length;
+        const endingCount = processedExpenses.filter(exp => exp.status === 'vencendo').length;
+
+        // Gerar alertas
+        const alerts = generateInvoiceAlerts(processedExpenses);
+
+        return {
+            allExpenses: processedExpenses,
+            filteredExpenses,
+            byAccount,
+            totalFiltered,
+            transactionCount: filteredExpenses.length,
+            ongoingCount,
+            endingCount,
+            alerts
+        };
+    }
+
+    function generateInvoiceAlerts(expenses) {
+        const alerts = [];
+        
+        // Alertas para vencimentos próximos (próximos 30 dias)
+        const soonToExpire = expenses.filter(exp => exp.status === 'vencendo');
+        
+        if (soonToExpire.length > 0) {
+            alerts.push({
+                type: 'warning',
+                title: `${soonToExpire.length} fatura(s) terminam em até 30 dias`,
+                description: soonToExpire.map(exp => 
+                    `${exp.description} (${exp.account}) - ${exp.daysRemaining} dias`
+                ).slice(0, 3).join(', ') + (soonToExpire.length > 3 ? '...' : ''),
+                count: soonToExpire.length
+            });
+        }
+
+        // Alertas informativos para faturas em andamento
+        const ongoing = expenses.filter(exp => exp.status === 'em-andamento');
+        if (ongoing.length > 0) {
+            alerts.push({
+                type: 'info',
+                title: `${ongoing.length} fatura(s) em andamento`,
+                description: `Parcelas sendo pagas regularmente.`,
+                count: ongoing.length
+            });
+        }
+
+        return alerts;
+    }
+
+    function updateInvoiceSummary(data) {
+        const totalElement = document.getElementById('invoice-total-filtered');
+        const countElement = document.getElementById('invoice-count-filtered');
+        const ongoingElement = document.getElementById('invoice-ongoing-count');
+        const endingElement = document.getElementById('invoice-ending-count');
+        
+        if (totalElement) totalElement.textContent = 'R$ ' + data.totalFiltered.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+        if (countElement) countElement.textContent = data.transactionCount;
+        if (ongoingElement) ongoingElement.textContent = data.ongoingCount;
+        if (endingElement) endingElement.textContent = data.endingCount;
+    }
+
+    function updateInvoiceCharts(data) {
+        // Gráfico de evolução mensal
+        updateInvoiceEvolutionChart(data.filteredExpenses);
+        
+        // Gráfico de distribuição por conta
+        updateInvoiceAccountChart(data.byAccount);
+    }
+
+    function updateInvoiceEvolutionChart(expenses) {
+        const ctx = document.getElementById('invoice-evolution-chart');
+        if (!ctx) return;
+
+        // Agrupar por mês de término
+        const monthlyData = expenses.reduce((acc, expense) => {
+            const endDate = new Date(expense.endDate);
+            const monthKey = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`;
+            
+            if (!acc[monthKey]) {
+                acc[monthKey] = { total: 0, count: 0 };
+            }
+            acc[monthKey].total += expense.totalValue;
+            acc[monthKey].count += 1;
+            
+            return acc;
+        }, {});
+
+        const sortedMonths = Object.keys(monthlyData).sort();
+        const labels = sortedMonths.map(month => {
+            const [year, monthNum] = month.split('-');
+            const date = new Date(year, monthNum - 1);
+            return date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+        });
+        const values = sortedMonths.map(month => monthlyData[month].total);
+
+        if (window.invoiceEvolutionChart) {
+            window.invoiceEvolutionChart.destroy();
+        }
+
+        window.invoiceEvolutionChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Valor das Faturas',
+                    data: values,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Evolução Mensal das Faturas'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'R$ ' + value.toLocaleString('pt-BR');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateInvoiceAccountChart(accountData) {
+        const ctx = document.getElementById('invoice-account-chart');
+        if (!ctx) return;
+
+        const accounts = Object.keys(accountData);
+        const values = accounts.map(account => 
+            accountData[account].reduce((sum, exp) => sum + exp.totalValue, 0)
+        );
+
+        if (window.invoiceAccountChart) {
+            window.invoiceAccountChart.destroy();
+        }
+
+        window.invoiceAccountChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: accounts,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', 
+                        '#ef4444', '#6366f1', '#ec4899', '#84cc16'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Distribuição por Conta'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${context.label}: R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateInvoiceAccountCards(data) {
+        const container = document.getElementById('invoice-accounts-container');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        Object.keys(data.byAccount).forEach(account => {
+            const accountExpenses = data.byAccount[account];
+            const accountTotal = accountExpenses.reduce((sum, exp) => sum + exp.totalValue, 0);
+            const ongoingCount = accountExpenses.filter(exp => exp.status === 'em-andamento').length;
+            const endingCount = accountExpenses.filter(exp => exp.status === 'vencendo').length;
+
+            const cardHtml = `
+                <div class="bg-white p-6 rounded-lg shadow-md mb-6 invoice-account-card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-gray-700">${account}</h3>
+                        <div class="text-right">
+                            <p class="text-2xl font-bold text-purple-600">R$ ${accountTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            <p class="text-sm text-gray-500">${accountExpenses.length} faturas</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 mb-4">
+                        <div class="text-center p-3 bg-green-50 rounded-lg">
+                            <p class="text-sm text-green-600">Finalizadas</p>
+                            <p class="text-lg font-bold text-green-700">${accountExpenses.filter(exp => exp.status === 'finalizado').length}</p>
+                        </div>
+                        <div class="text-center p-3 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-blue-600">Em Andamento</p>
+                            <p class="text-lg font-bold text-blue-700">${ongoingCount}</p>
+                        </div>
+                        <div class="text-center p-3 bg-yellow-50 rounded-lg">
+                            <p class="text-sm text-yellow-600">Vencendo</p>
+                            <p class="text-lg font-bold text-yellow-700">${endingCount}</p>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="p-2 text-left">Descrição</th>
+                                    <th class="p-2 text-left">Valor Total</th>
+                                    <th class="p-2 text-left">Status</th>
+                                    <th class="p-2 text-left">Término</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${accountExpenses.map(expense => `
+                                    <tr class="invoice-table-row border-t">
+                                        <td class="p-2">${expense.description}</td>
+                                        <td class="p-2">R$ ${expense.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                        <td class="p-2">
+                                            <span class="invoice-status-badge invoice-status-${expense.status}">
+                                                ${expense.status === 'em-andamento' ? 'Em Andamento' : 
+                                                  expense.status === 'finalizado' ? 'Finalizado' : 'Vencendo'}
+                                            </span>
+                                        </td>
+                                        <td class="p-2">${new Date(expense.endDate).toLocaleDateString('pt-BR')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML += cardHtml;
+        });
+    }
+
+    function updateInvoiceDetailsTable(expenses) {
+        const tbody = document.getElementById('invoice-details-table');
+        if (!tbody) return;
+
+        tbody.innerHTML = expenses.map(expense => `
+            <tr class="invoice-table-row border-t">
+                <td class="p-3">${new Date(expense.transaction_date).toLocaleDateString('pt-BR')}</td>
+                <td class="p-3">${expense.description}</td>
+                <td class="p-3">R$ ${expense.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td class="p-3">${expense.account}</td>
+                <td class="p-3">${expense.total_installments}x de R$ ${expense.installmentValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td class="p-3">${new Date(expense.endDate).toLocaleDateString('pt-BR')}</td>
+                <td class="p-3">
+                    <span class="invoice-status-badge invoice-status-${expense.status}">
+                        ${expense.status === 'em-andamento' ? 'Em Andamento' : 
+                          expense.status === 'finalizado' ? 'Finalizado' : 'Vencendo'}
+                    </span>
+                </td>
+                <td class="p-3">
+                    ${expense.status === 'em-andamento' || expense.status === 'vencendo' ? 
+                        `${expense.daysRemaining} dias` : 
+                        'Finalizado'}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function updateInvoiceAlerts(alerts) {
+        const container = document.getElementById('invoice-alerts');
+        if (!container) return;
+
+        if (alerts.length === 0) {
+            container.innerHTML = '<p class="text-gray-500">Nenhum alerta no momento.</p>';
+            return;
+        }
+
+        container.innerHTML = alerts.map(alert => `
+            <div class="p-4 rounded-lg ${alert.type === 'warning' ? 'invoice-warning' : 'bg-blue-50 border-l-4 border-blue-400'}">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">${alert.type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+                    <div>
+                        <h4 class="font-semibold">${alert.title}</h4>
+                        <p class="text-sm mt-1">${alert.description}</p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Event listeners para a aba de faturas
+    function initializeInvoiceEventListeners() {
+        // Botões de filtro principal
+        const filterInvoicesBtn = document.getElementById('filter-invoices-btn');
+        if (filterInvoicesBtn) {
+            filterInvoicesBtn.addEventListener('click', filterInvoices);
+        }
+
+        // Botões específicos para cada tipo de filtro
+        const filterMonthlyBtn = document.getElementById('filter-monthly-btn');
+        if (filterMonthlyBtn) {
+            filterMonthlyBtn.addEventListener('click', filterInvoicesByMonth);
+        }
+
+        const filterPeriodBtn = document.getElementById('filter-period-btn');
+        if (filterPeriodBtn) {
+            filterPeriodBtn.addEventListener('click', filterInvoicesByPeriod);
+        }
+
+        // Auto-filtrar quando mudar filtros simples
+        ['invoice-year', 'invoice-month', 'invoice-account', 'invoice-status'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', () => {
+                    if (currentFilterType === 'simple') {
+                        filterInvoices();
+                    }
+                });
+            }
+        });
+
+        // Auto-filtrar quando mudar filtros mensais
+        ['monthly-year', 'monthly-start', 'monthly-end', 'monthly-account'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', () => {
+                    if (currentFilterType === 'monthly') {
+                        filterInvoicesByMonth();
+                    }
+                });
+            }
+        });
+
+        // Auto-filtrar quando mudar filtros de período
+        ['period-base', 'period-duration', 'period-account', 'period-status'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', () => {
+                    if (currentFilterType === 'period') {
+                        filterInvoicesByPeriod();
+                    }
+                });
+            }
+        });
+
+        // Campos de data personalizada
+        ['period-start-date', 'period-end-date'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', () => {
+                    if (currentFilterType === 'period' && 
+                        document.getElementById('period-base')?.value === 'custom') {
+                        filterInvoicesByPeriod();
+                    }
+                });
+            }
+        });
+
+        // Busca por texto com debounce
+        const searchElements = [
+            { id: 'invoice-search', filterType: 'simple' },
+            { id: 'monthly-search', filterType: 'monthly' },
+            { id: 'period-search', filterType: 'period' }
+        ];
+
+        searchElements.forEach(({ id, filterType }) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('input', debounce(() => {
+                    if (currentFilterType === filterType) {
+                        if (filterType === 'simple') filterInvoices();
+                        else if (filterType === 'monthly') filterInvoicesByMonth();
+                        else if (filterType === 'period') filterInvoicesByPeriod();
+                    }
+                }, 500));
+            }
+        });
+
+        // Botões de exportação
+        const exportCsvBtn = document.getElementById('export-invoices-csv');
+        const exportPdfBtn = document.getElementById('export-invoices-pdf');
+        
+        if (exportCsvBtn) {
+            exportCsvBtn.addEventListener('click', exportInvoicesCSV);
+        }
+        
+        if (exportPdfBtn) {
+            exportPdfBtn.addEventListener('click', exportInvoicesPDF);
+        }
+    }
+
+    function exportInvoicesCSV() {
+        showNotification('Funcionalidade de exportação CSV em desenvolvimento', 'info');
+    }
+
+    function exportInvoicesPDF() {
+        showNotification('Funcionalidade de exportação PDF em desenvolvimento', 'info');
+    }
+
+    // Função debounce para busca
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Inicializar event listeners quando o DOM estiver pronto
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeInvoiceEventListeners();
+    });
 
     // Chamar inicialização
     init();
