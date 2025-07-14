@@ -62,10 +62,21 @@ const upload = multer({ storage: storage });
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    if (token == null) return res.status(401).json({ message: 'Acesso não autorizado.' });
+    
+    console.log('Auth middleware - Headers:', req.headers);
+    console.log('Auth middleware - Token:', token ? 'Token presente' : 'Token ausente');
+    
+    if (token == null) {
+        console.log('Auth middleware - Token nulo, retornando 401');
+        return res.status(401).json({ message: 'Acesso não autorizado.' });
+    }
 
     jwt.verify(token, process.env.JWT_SECRET || 'seu_segredo_super_secreto', (err, user) => {
-        if (err) return res.status(403).json({ message: 'Token inválido ou expirado.' });
+        if (err) {
+            console.log('Auth middleware - Erro na verificação do token:', err.message);
+            return res.status(403).json({ message: 'Token inválido ou expirado.' });
+        }
+        console.log('Auth middleware - Token válido para usuário:', user.username);
         req.user = user;
         next();
     });
@@ -902,59 +913,6 @@ app.post('/api/recurring-expenses/process', authenticateToken, async (req, res) 
     } catch (error) {
         console.error('Erro ao processar gastos recorrentes:', error);
         res.status(500).json({ message: 'Erro ao processar gastos recorrentes.' });
-    }
-});
-
-// --- 8.3. ROTAS MODIFICADAS PARA FILTRAR GASTOS RECORRENTES ---
-app.get('/api/expenses', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { year, month, account, start_date, end_date, recurring } = req.query;
-
-    try {
-        let sql = 'SELECT * FROM expenses WHERE user_id = ?';
-        const params = [userId];
-
-        // Filtro por conta
-        if (account) {
-            sql += ' AND account = ?';
-            params.push(account);
-        }
-
-        // Filtro por despesas recorrentes
-        if (recurring === 'true') {
-            sql += ' AND is_recurring_expense = 1';
-        } else if (recurring === 'false') {
-            sql += ' AND is_recurring_expense = 0';
-        }
-
-        // Permite busca por intervalo de datas explícito (usado na busca de fatura)
-        if (start_date && end_date) {
-            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
-            params.push(start_date, end_date);
-        } else if (account && billingPeriods[account] && year && month) {
-            const { startDay, endDay } = billingPeriods[account];
-            const startDate = new Date(year, month - 1, startDay);
-            let endMonth = Number(month);
-            let endYear = Number(year);
-            if (endDay < startDay) {
-                endMonth++;
-                if (endMonth > 12) { endMonth = 1; endYear++; }
-            }
-            const endDate = new Date(endYear, endMonth - 1, endDay);
-
-            sql += ' AND transaction_date >= ? AND transaction_date <= ?';
-            params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
-        } else if (year && month) {
-            sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
-            params.push(year, month);
-        }
-
-        sql += ' ORDER BY transaction_date DESC';
-        const [rows] = await pool.query(sql, params);
-        res.json(rows);
-    } catch (error) {
-        console.error('Erro ao buscar despesas:', error);
-        res.status(500).json({ message: 'Erro ao buscar despesas.' });
     }
 });
 

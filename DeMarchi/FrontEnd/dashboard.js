@@ -62,6 +62,55 @@ document.addEventListener('DOMContentLoaded', function() {
         return localStorage.getItem('token');
     }
 
+    // Função para verificar se o usuário está autenticado
+    function checkAuthentication() {
+        const token = getToken();
+        if (!token) {
+            showLogin();
+            return false;
+        }
+        return true;
+    }
+
+    // Função para lidar com erros de autenticação
+    function handleAuthError(response) {
+        if (response.status === 401 || response.status === 403) {
+            showNotification('Sessão expirada. Faça login novamente.', 'error');
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            showLogin();
+            return true;
+        }
+        return false;
+    }
+
+    // Função melhorada para fazer requests com tratamento de autenticação
+    async function authenticatedFetch(url, options = {}) {
+        const token = getToken();
+        if (!token) {
+            showLogin();
+            throw new Error('Token não encontrado');
+        }
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...options.headers
+        };
+
+        const response = await fetch(url, {
+            ...options,
+            headers
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            handleAuthError(response);
+            throw new Error('Autenticação falhou');
+        }
+
+        return response;
+    }
+
     function addEventListeners() {
         if (loginForm) loginForm.addEventListener('submit', handleLogin);
         if (logoutButton) logoutButton.addEventListener('click', handleLogout);
@@ -171,19 +220,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Busca tetos e renderiza gráfico de limites/alertas ---
     async function fetchAndRenderGoalsChart() {
-        const token = getToken();
-        if (!token) return;
-
-        const params = new URLSearchParams({
-            year: filterYear.value,
-            month: filterMonth.value
-        });
-
         try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses-goals?${params.toString()}`, {
-                headers: { Authorization: `Bearer ${token}` }
+            if (!checkAuthentication()) return;
+
+            const params = new URLSearchParams({
+                year: filterYear.value,
+                month: filterMonth.value
             });
-            if (!response.ok) throw new Error('Erro ao buscar limites.');
+
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/expenses-goals?${params.toString()}`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao buscar limites.');
+            }
+            
             const data = await response.json();
 
             // Notificações de limites (alertas)
@@ -198,6 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
             renderGoalsPlanChart(data);
         } catch (error) {
             console.error('Erro ao buscar limites:', error);
+            showNotification('Erro ao carregar limites de gastos', 'error');
         }
     }
 
@@ -371,24 +423,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function fetchAndRenderExpenses() {
-        const token = getToken();
-        if (!token) return;
-
-        const params = new URLSearchParams({
-            year: filterYear.value,
-            month: filterMonth.value,
-            account: document.getElementById('filter-account')?.value || ''
-        });
-
         try {
-            const response = await fetch(`${API_BASE_URL}/api/expenses?${params.toString()}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            if (!checkAuthentication()) return;
+
+            const params = new URLSearchParams({
+                year: filterYear.value,
+                month: filterMonth.value,
+                account: document.getElementById('filter-account')?.value || ''
             });
 
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/expenses?${params.toString()}`);
+
             if (!response.ok) {
-                throw new Error('Erro ao buscar despesas.');
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao buscar despesas.');
             }
 
             const expenses = await response.json();
@@ -396,6 +444,7 @@ document.addEventListener('DOMContentLoaded', function() {
             applyAllFilters(); // Aplica filtros após buscar
         } catch (error) {
             console.error(error);
+            showNotification('Erro ao carregar despesas', 'error');
         }
     }
 
@@ -447,15 +496,18 @@ document.addEventListener('DOMContentLoaded', function() {
     if (filterPlan) filterPlan.addEventListener('input', applyAllFilters);
 
     async function fetchAndRenderDashboardMetrics() {
-        const token = getToken();
-        if (!token) return;
-
-        const params = new URLSearchParams({ year: filterYear.value, month: filterMonth.value });
         try {
-            const response = await fetch(`${API_BASE_URL}/api/dashboard?${params}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error('Erro ao buscar métricas do dashboard.');
+            if (!checkAuthentication()) return;
+
+            const params = new URLSearchParams({ year: filterYear.value, month: filterMonth.value });
+            
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/dashboard?${params}`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao buscar métricas do dashboard.');
+            }
+            
             const data = await response.json();
 
             if (projectionEl) {
@@ -469,6 +521,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Erro ao buscar métricas do dashboard:', error);
+            showNotification('Erro ao carregar métricas', 'error');
         }
     }
 
@@ -921,15 +974,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function populateAccountFilter() {
-        const token = getToken();
         const select = document.getElementById('filter-account');
-        if (!select || !token) return;
+        if (!select) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/accounts`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error('Erro ao buscar contas.');
+            if (!checkAuthentication()) return;
+
+            const response = await authenticatedFetch(`${API_BASE_URL}/api/accounts`);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Erro ao buscar contas.');
+            }
+            
             const accounts = await response.json();
 
             select.innerHTML = '<option value="">Todas as Contas</option>';
@@ -942,6 +999,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         } catch (error) {
+            console.error('Erro ao carregar contas:', error);
             showNotification('Erro ao carregar contas.', 'error');
         }
     }
@@ -966,9 +1024,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window.Chart && window.ChartDataLabels) {
         Chart.register(window.ChartDataLabels);
     }
-
-    addEventListeners();
-    if (getToken()) showDashboard(); else showLogin();
 
     // ========== RELATÓRIO INTERATIVO ==========
     async function populateIrAccounts() {
@@ -1853,6 +1908,39 @@ document.addEventListener('DOMContentLoaded', function() {
         toggleExpenseFields();
         initializeTabs(); // Adicionar inicialização das tabs
     }
+
+    // ========== INICIALIZAÇÃO AUTOMÁTICA ==========
+    // Verificar se o usuário já está logado quando a página carrega
+    function init() {
+        addEventListeners();
+        
+        const token = getToken();
+        if (token) {
+            // Verificar se o token ainda é válido
+            fetch(`${API_BASE_URL}/api/accounts`, {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            .then(response => {
+                if (response.ok) {
+                    showDashboard();
+                } else {
+                    // Token inválido, limpar e mostrar login
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('username');
+                    showLogin();
+                }
+            })
+            .catch(() => {
+                // Erro de rede, mostrar login
+                showLogin();
+            });
+        } else {
+            showLogin();
+        }
+    }
+
+    // Chamar inicialização
+    init();
 
     // ========== FIM FUNÇÕES GASTOS RECORRENTES ==========
 });
