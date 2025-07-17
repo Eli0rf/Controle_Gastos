@@ -35,13 +35,29 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Validação de variáveis de ambiente críticas
-const requiredEnvVars = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+// Validação de variáveis de ambiente críticas - Railway compatível
+const requiredEnvVars = ['JWT_SECRET'];
+const optionalDbVars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'DATABASE_HOST', 'DATABASE_USER', 'DATABASE_PASSWORD', 'DATABASE_NAME', 'DATABASE_URL'];
 
-if (missingEnvVars.length > 0) {
-    console.error('❌ ERRO CRÍTICO: Variáveis de ambiente obrigatórias não configuradas:', missingEnvVars);
-    process.exit(1);
+const missingCriticalVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingCriticalVars.length > 0) {
+    console.error('❌ ERRO CRÍTICO: Variáveis de ambiente obrigatórias não configuradas:', missingCriticalVars);
+    
+    // Em desenvolvimento, permitir continuar com avisos
+    if (process.env.NODE_ENV === 'production') {
+        console.error('💡 Configure as variáveis no Railway: https://railway.app/dashboard');
+        process.exit(1);
+    } else {
+        console.warn('⚠️  Executando em modo desenvolvimento sem todas as variáveis obrigatórias');
+    }
+}
+
+// Verificar se há pelo menos uma configuração de banco de dados
+const hasDbConfig = optionalDbVars.some(varName => process.env[varName]);
+if (!hasDbConfig) {
+    console.warn('⚠️  AVISO: Nenhuma configuração de banco de dados encontrada');
+    console.warn('💡 Certifique-se de ter configurado DATABASE_URL ou variáveis individuais no Railway');
 }
 
 // --- 2.1. CONFIGURAÇÕES DE SEGURANÇA APRIMORADAS ---
@@ -225,7 +241,10 @@ app.get('/', (req, res) => {
 
 app.get('/health', async (req, res) => {
     try {
+        console.log('🏥 Health check solicitado');
         const startTime = Date.now();
+        
+        // Testar conexão com banco de dados
         const isConnected = await testConnection();
         const dbResponseTime = Date.now() - startTime;
         const memoryUsage = process.memoryUsage();
@@ -235,40 +254,82 @@ app.get('/health', async (req, res) => {
             status: 'healthy',
             timestamp: new Date().toISOString(),
             uptime: Math.floor(process.uptime()),
+            environment: process.env.NODE_ENV || 'development',
+            version: '3.0.0',
             memory: {
                 used: Math.round(memoryUsage.heapUsed / 1024 / 1024),
                 total: Math.round(memoryUsage.heapTotal / 1024 / 1024),
+                rss: Math.round(memoryUsage.rss / 1024 / 1024),
+                external: Math.round(memoryUsage.external / 1024 / 1024),
                 unit: 'MB'
             },
             database: {
                 connected: isConnected,
                 responseTime: dbResponseTime,
-                unit: 'ms'
+                unit: 'ms',
+                host: process.env.DB_HOST || process.env.DATABASE_HOST || 'localhost',
+                port: process.env.DB_PORT || process.env.DATABASE_PORT || 3306
             },
-            environment: process.env.NODE_ENV || 'development',
+            railway: {
+                environment: process.env.RAILWAY_ENVIRONMENT || 'unknown',
+                projectId: process.env.RAILWAY_PROJECT_ID || 'unknown',
+                serviceId: process.env.RAILWAY_SERVICE_ID || 'unknown'
+            },
             features: {
-                chartGeneration: ChartJSNodeCanvas ? 'available' : 'disabled'
+                chartGeneration: ChartJSNodeCanvas ? 'available' : 'disabled',
+                fileUploads: 'enabled',
+                pdfGeneration: 'enabled',
+                rateLimit: 'enabled',
+                compression: 'enabled',
+                security: 'enabled'
+            },
+            config: {
+                port: PORT,
+                corsEnabled: true,
+                httpsOnly: process.env.NODE_ENV === 'production',
+                maxFileSize: process.env.MAX_FILE_SIZE || '10MB'
             }
         };
 
+        // Se banco não conectado, marcar como degraded
         if (!isConnected) {
             healthStatus.status = 'degraded';
             healthStatus.success = false;
+            healthStatus.database.error = 'Falha na conexão com banco de dados';
+            console.warn('⚠️  Health check: Banco de dados não conectado');
+        }
+        
+        // Verificar uso de memória crítico
+        if (memoryUsage.heapUsed / memoryUsage.heapTotal > 0.9) {
+            healthStatus.status = 'degraded';
+            healthStatus.memory.warning = 'Alto uso de memória detectado';
+            console.warn('⚠️  Health check: Alto uso de memória');
         }
 
-        res.status(isConnected ? 200 : 503).json(healthStatus);
+        const statusCode = isConnected ? 200 : 503;
+        console.log(`✅ Health check concluído: ${healthStatus.status} (${statusCode})`);
+        
+        res.status(statusCode).json(healthStatus);
+        
     } catch (error) {
         console.error('❌ Health check falhou:', error);
-        res.status(503).json({ 
+        const errorResponse = { 
             success: false,
             status: 'unhealthy',
             error: error.message,
             timestamp: new Date().toISOString(),
+            uptime: Math.floor(process.uptime()),
+            environment: process.env.NODE_ENV || 'development',
             database: {
                 connected: false,
-                error: 'Connection failed'
+                error: 'Health check exception: ' + error.message
+            },
+            railway: {
+                environment: process.env.RAILWAY_ENVIRONMENT || 'unknown'
             }
-        });
+        };
+        
+        res.status(503).json(errorResponse);
     }
 });
 
@@ -1303,52 +1364,64 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
             .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
             .slice(0, 5);
 
-        // Gráfico de barras por conta
-        const chartCanvas = new ChartJSNodeCanvas({ width: 600, height: 300 });
-        const chartBarBuffer = await chartCanvas.renderToBuffer({
-            type: 'bar',
-            data: {
-                labels: Object.keys(porConta),
-                datasets: [{
-                    label: 'Gastos por Conta',
-                    data: Object.values(porConta),
-                    backgroundColor: [
-                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'
-                    ]
-                }]
-            },
-            options: { plugins: { legend: { display: false } } }
-        });
+        // Verificar se ChartJS está disponível antes de gerar gráficos
+        let chartBarBuffer, chartPieBuffer, chartLineBuffer;
+        
+        if (ChartJSNodeCanvas) {
+            try {
+                // Gráfico de barras por conta
+                const chartCanvas = new ChartJSNodeCanvas({ width: 600, height: 300 });
+                chartBarBuffer = await chartCanvas.renderToBuffer({
+                    type: 'bar',
+                    data: {
+                        labels: Object.keys(porConta),
+                        datasets: [{
+                            label: 'Gastos por Conta',
+                            data: Object.values(porConta),
+                            backgroundColor: [
+                                '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'
+                            ]
+                        }]
+                    },
+                    options: { plugins: { legend: { display: false } } }
+                });
 
-        // Gráfico de pizza por tipo
-        const chartPieBuffer = await chartCanvas.renderToBuffer({
-            type: 'pie',
-            data: {
-                labels: Object.keys(porTipo),
-                datasets: [{
-                    data: Object.values(porTipo),
-                    backgroundColor: ['#3B82F6', '#EF4444']
-                }]
-            }
-        });
+                // Gráfico de pizza por tipo
+                chartPieBuffer = await chartCanvas.renderToBuffer({
+                    type: 'pie',
+                    data: {
+                        labels: Object.keys(porTipo),
+                        datasets: [{
+                            data: Object.values(porTipo),
+                            backgroundColor: ['#3B82F6', '#EF4444']
+                        }]
+                    }
+                });
 
-        // Gráfico de linha por dia
-        const diasLabels = Object.keys(porDia);
-        const diasValores = diasLabels.map(d => porDia[d]);
-        const chartLineBuffer = await chartCanvas.renderToBuffer({
-            type: 'line',
-            data: {
-                labels: diasLabels,
-                datasets: [{
-                    label: 'Gastos por Dia',
-                    data: diasValores,
-                    borderColor: '#6366F1',
-                    backgroundColor: 'rgba(99,102,241,0.2)',
-                    fill: true,
-                    tension: 0.3
-                }]
+                // Gráfico de linha por dia
+                const diasLabels = Object.keys(porDia);
+                const diasValores = diasLabels.map(d => porDia[d]);
+                chartLineBuffer = await chartCanvas.renderToBuffer({
+                    type: 'line',
+                    data: {
+                        labels: diasLabels,
+                        datasets: [{
+                            label: 'Gastos por Dia',
+                            data: diasValores,
+                            borderColor: '#6366F1',
+                            backgroundColor: 'rgba(99,102,241,0.2)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    }
+                });
+            } catch (chartError) {
+                console.warn('⚠️  Erro ao gerar gráficos:', chartError.message);
+                chartBarBuffer = chartPieBuffer = chartLineBuffer = null;
             }
-        });
+        } else {
+            console.log('⚠️  ChartJS não disponível, gerando PDF sem gráficos');
+        }
 
         // Gera PDF
         const doc = new pdfkit({ autoFirstPage: false });
@@ -1371,7 +1444,12 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
         doc.rect(0, 0, doc.page.width, 40).fill('#6366F1');
         doc.fillColor('white').fontSize(20).text('💳 Gastos por Conta', 0, 10, { align: 'center', width: doc.page.width });
         doc.moveDown(2);
-        doc.image(chartBarBuffer, { fit: [500, 200], align: 'center' });
+        
+        if (chartBarBuffer) {
+            doc.image(chartBarBuffer, { fit: [500, 200], align: 'center' });
+        } else {
+            doc.fontSize(14).fillColor('#666').text('Gráfico não disponível - ChartJS não instalado', { align: 'center' });
+        }
         doc.moveDown();
         Object.entries(porConta).forEach(([conta, valor]) => {
             doc.fontSize(12).fillColor('#222').text(`- ${conta}: R$ ${valor.toFixed(2)}`);
@@ -1382,7 +1460,12 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
         doc.rect(0, 0, doc.page.width, 40).fill('#F59E0B');
         doc.fillColor('white').fontSize(20).text('🏷️ Distribuição por Tipo', 0, 10, { align: 'center', width: doc.page.width });
         doc.moveDown(2);
-        doc.image(chartPieBuffer, { fit: [300, 200], align: 'center' });
+        
+        if (chartPieBuffer) {
+            doc.image(chartPieBuffer, { fit: [300, 200], align: 'center' });
+        } else {
+            doc.fontSize(14).fillColor('#666').text('Gráfico não disponível - ChartJS não instalado', { align: 'center' });
+        }
         doc.moveDown();
         Object.entries(porTipo).forEach(([tipo, valor]) => {
             doc.fontSize(12).fillColor(tipo === 'Empresarial' ? '#EF4444' : '#3B82F6').text(`- ${tipo}: R$ ${valor.toFixed(2)}`);
@@ -1393,7 +1476,12 @@ app.get('/api/reports/weekly', authenticateToken, async (req, res) => {
         doc.rect(0, 0, doc.page.width, 40).fill('#10B981');
         doc.fillColor('white').fontSize(20).text('📈 Evolução Diária dos Gastos', 0, 10, { align: 'center', width: doc.page.width });
         doc.moveDown(2);
-        doc.image(chartLineBuffer, { fit: [500, 200], align: 'center' });
+        
+        if (chartLineBuffer) {
+            doc.image(chartLineBuffer, { fit: [500, 200], align: 'center' });
+        } else {
+            doc.fontSize(14).fillColor('#666').text('Gráfico não disponível - ChartJS não instalado', { align: 'center' });
+        }
 
         // Top 5 maiores gastos
         doc.addPage();
@@ -2334,48 +2422,98 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // --- 9. INICIALIZAÇÃO DO SERVIDOR ---
 if (require.main === module) {
-    const server = app.listen(PORT, async () => {
+    // Função para inicializar o servidor com retry
+    async function startServer() {
         try {
+            console.log('🚀 Iniciando Controle de Gastos Backend v3.0...');
+            console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`🔌 Porta: ${PORT}`);
+            
+            // Testar conexão com banco antes de iniciar servidor
+            console.log('🔍 Testando conexão com banco de dados...');
             const isConnected = await testConnection();
-            if (isConnected) {
-                console.log('✅ Conexão com o MySQL estabelecida com sucesso.');
-                console.log(`🚀 Servidor a ser executado na porta ${PORT}`);
-            } else {
-                console.error('❌ ERRO CRÍTICO AO CONECTAR COM O BANCO DE DADOS');
+            
+            if (!isConnected) {
+                console.error('❌ ERRO CRÍTICO: Não foi possível conectar ao banco de dados');
+                console.error('❌ Variáveis de ambiente disponíveis:', {
+                    DB_HOST: process.env.DB_HOST ? '✅' : '❌',
+                    DB_USER: process.env.DB_USER ? '✅' : '❌',
+                    DB_PASSWORD: process.env.DB_PASSWORD ? '✅' : '❌',
+                    DB_NAME: process.env.DB_NAME ? '✅' : '❌',
+                    DATABASE_URL: process.env.DATABASE_URL ? '✅' : '❌'
+                });
                 process.exit(1);
             }
+            
+            // Iniciar servidor
+            const server = app.listen(PORT, '0.0.0.0', () => {
+                console.log('✅ Conexão com o MySQL estabelecida com sucesso');
+                console.log(`🚀 Servidor rodando na porta ${PORT}`);
+                console.log(`🌐 Health check disponível em: http://localhost:${PORT}/health`);
+                console.log(`📚 API endpoints disponíveis em: http://localhost:${PORT}/`);
+                console.log('✅ Sistema pronto para receber requisições!');
+            });
+
+            // Configurar timeouts do servidor para Railway
+            server.timeout = 120000; // 2 minutos
+            server.keepAliveTimeout = 61000; // 61 segundos
+            server.headersTimeout = 62000; // 62 segundos
+
+            // Graceful shutdown para Railway
+            const shutdown = (signal) => {
+                console.log(`\n🛑 Recebido ${signal}. Encerrando servidor graciosamente...`);
+                
+                server.close(async () => {
+                    console.log('📡 Servidor HTTP fechado');
+                    
+                    try {
+                        await closePool();
+                        console.log('🗄️ Conexões do banco fechadas');
+                    } catch (error) {
+                        console.error('❌ Erro ao fechar conexões do banco:', error);
+                    }
+                    
+                    console.log('✅ Processo encerrado com sucesso');
+                    process.exit(0);
+                });
+
+                // Force shutdown após timeout
+                setTimeout(() => {
+                    console.error('❌ Forçando encerramento após timeout');
+                    process.exit(1);
+                }, 10000);
+            };
+
+            // Handlers de sinais
+            process.on('SIGTERM', () => shutdown('SIGTERM'));
+            process.on('SIGINT', () => shutdown('SIGINT'));
+            process.on('SIGHUP', () => shutdown('SIGHUP'));
+            
+            // Handler de erros não capturados
+            process.on('uncaughtException', (error) => {
+                console.error('❌ Erro não capturado:', error);
+                shutdown('UNCAUGHT_EXCEPTION');
+            });
+            
+            process.on('unhandledRejection', (reason, promise) => {
+                console.error('❌ Promise rejeitada não tratada:', reason);
+                console.error('❌ Promise:', promise);
+                shutdown('UNHANDLED_REJECTION');
+            });
+
+            return server;
+            
         } catch (error) {
-            console.error('❌ ERRO CRÍTICO AO CONECTAR COM O BANCO DE DADOS:', error.message);
+            console.error('❌ ERRO CRÍTICO ao iniciar servidor:', error);
             process.exit(1);
         }
+    }
+    
+    // Iniciar servidor
+    startServer().catch(error => {
+        console.error('❌ Falha fatal ao iniciar servidor:', error);
+        process.exit(1);
     });
-
-    // Graceful shutdown para Railway
-    const shutdown = (signal) => {
-        console.log(`\n🛑 Recebido ${signal}. Encerrando servidor graciosamente...`);
-        
-        server.close(async () => {
-            console.log('📡 Servidor HTTP fechado.');
-            
-            try {
-                await closePool();
-            } catch (error) {
-                console.error('❌ Erro ao fechar conexões do banco:', error);
-            }
-            
-            console.log('✅ Processo encerrado com sucesso.');
-            process.exit(0);
-        });
-
-        // Force shutdown after 10 seconds
-        setTimeout(() => {
-            console.error('❌ Forçando encerramento após timeout.');
-            process.exit(1);
-        }, 10000);
-    };
-
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
     
 } else {
     module.exports = app;

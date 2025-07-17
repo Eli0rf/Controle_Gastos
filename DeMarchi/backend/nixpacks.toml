@@ -1,10 +1,10 @@
 [providers]
-nodejs = "18.x"
+nodejs = "20.x"
 
 [build]
 cmds = [
-    "npm install --production --no-package-lock --no-fund --no-audit",
-    "npm rebuild canvas || true"
+    "npm ci --only=production --no-fund --no-audit --ignore-scripts",
+    "npm cache clean --force"
 ]
 
 [start]
@@ -14,3 +14,4 @@ cmd = "npm start"
 NODE_ENV = "production"
 NPM_CONFIG_FUND = "false"
 NPM_CONFIG_AUDIT = "false"
+NPM_CONFIG_UPDATE_NOTIFIER = "false"
