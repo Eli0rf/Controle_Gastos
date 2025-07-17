@@ -1,103 +1,230 @@
 /**
- * dashboard.js - Versão Final e Completa
+ * dashboard.js - Versão Otimizada para Railway
+ * Atualizado com melhorias de segurança e performance
  */
 document.addEventListener('DOMContentLoaded', function() {
 
-    // Define a URL base do backend no Railway
-    const API_BASE_URL = 'https://controlegastos-production.up.railway.app';
+    // ===== CONFIGURAÇÕES DO AMBIENTE =====
+    const CONFIG = {
+        // URLs do Railway
+        API_BASE_URL: 'https://controlegastos-production.up.railway.app',
+        
+        // Configurações de segurança
+        TOKEN_STORAGE_KEY: 'cg_auth_token',
+        USER_STORAGE_KEY: 'cg_user_data',
+        
+        // Configurações de timeout
+        REQUEST_TIMEOUT: 30000, // 30 segundos
+        
+        // Cache settings
+        CACHE_DURATION: 5 * 60 * 1000, // 5 minutos
+        
+        // Retry settings
+        MAX_RETRIES: 3,
+        RETRY_DELAY: 1000
+    };
 
-    const RAILWAY_BACKEND_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
-    
-    const FILE_BASE_URL = 'https://controlegastos-production.up.railway.app/DeMarchi/backend';
+    // ===== CACHE INTELIGENTE =====
+    class CacheManager {
+        constructor() {
+            this.cache = new Map();
+        }
 
-    const loginSection = document.getElementById('login-section');
-    const dashboardContent = document.getElementById('dashboard-content');
-    const loginForm = document.getElementById('login-form');
-    const logoutButton = document.getElementById('logout-button');
-    const welcomeUserSpan = document.getElementById('welcome-user');
-    const addExpenseForm = document.getElementById('add-expense-form');
-    const businessCheckbox = document.getElementById('form-is-business');
-    const personalFields = document.getElementById('personal-fields-container');
-    const businessFields = document.getElementById('business-fields-container');
-    const expensesTableBody = document.getElementById('expenses-table-body');
-    const filterYear = document.getElementById('filter-year');
-    const filterMonth = document.getElementById('filter-month');
-    const filterSearchInput = document.getElementById('filter-search');
-    const filterType = document.getElementById('filter-type');
-    const filterMin = document.getElementById('filter-min');
-    const filterMax = document.getElementById('filter-max');
-    const filterPlan = document.getElementById('filter-plan');
-    const totalSpentEl = document.getElementById('total-spent');
-    const totalTransactionsEl = document.getElementById('total-transactions');
-    const projectionEl = document.getElementById('next-month-projection');
-    const monthlyReportBtn = document.getElementById('monthly-report-btn');
-    const weeklyReportBtn = document.getElementById('weekly-report-btn');
-    const reportModal = document.getElementById('report-modal');
-    const reportForm = document.getElementById('report-form');
-    const cancelReportBtn = document.getElementById('cancel-report-btn');
-    const reportGenerateText = document.getElementById('report-generate-text');
-    const reportLoadingText = document.getElementById('report-loading-text');
+        set(key, data, ttl = CONFIG.CACHE_DURATION) {
+            this.cache.set(key, {
+                data,
+                expires: Date.now() + ttl
+            });
+        }
 
-    // ========== RELATÓRIO INTERATIVO ==========
-    const interactiveReportBtn = document.getElementById('interactive-report-btn');
-    const interactiveReportModal = document.getElementById('interactive-report-modal');
-    const closeIrModalBtn = document.getElementById('close-ir-modal');
-    const irForm = document.getElementById('interactive-report-form');
-    const irAccount = document.getElementById('ir-account');
-    const irCharts = document.getElementById('ir-charts');
-    const irDetails = document.getElementById('ir-details');
+        get(key) {
+            const item = this.cache.get(key);
+            if (!item) return null;
+            
+            if (Date.now() > item.expires) {
+                this.cache.delete(key);
+                return null;
+            }
+            
+            return item.data;
+        }
 
-    // ========== GASTOS RECORRENTES ==========
-    const recurringExpensesBtn = document.getElementById('recurring-expenses-btn');
-    const recurringModal = document.getElementById('recurring-modal');
-    const closeRecurringModalBtn = document.getElementById('close-recurring-modal');
-    const recurringForm = document.getElementById('recurring-form');
-    const recurringList = document.getElementById('recurring-list');
-    const processRecurringBtn = document.getElementById('process-recurring-btn');
-
-    let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
-    let allExpensesCache = [];
-
-    function getToken() {
-        const token = localStorage.getItem('token');
-        console.log('Token recuperado:', token ? 'Token presente' : 'Token ausente');
-        return token;
+        clear() {
+            this.cache.clear();
+        }
     }
 
-    // Função para verificar se o usuário está autenticado
+    const cache = new CacheManager();
+
+    // ===== ELEMENTOS DOM =====
+    const elements = {
+        loginSection: document.getElementById('login-section'),
+        dashboardContent: document.getElementById('dashboard-content'),
+        loginForm: document.getElementById('login-form'),
+        logoutButton: document.getElementById('logout-button'),
+        welcomeUserSpan: document.getElementById('welcome-user'),
+        addExpenseForm: document.getElementById('add-expense-form'),
+        businessCheckbox: document.getElementById('form-is-business'),
+        personalFields: document.getElementById('personal-fields-container'),
+        businessFields: document.getElementById('business-fields-container'),
+        expensesTableBody: document.getElementById('expenses-table-body'),
+        
+        // Filtros
+        filterYear: document.getElementById('filter-year'),
+        filterMonth: document.getElementById('filter-month'),
+        filterSearchInput: document.getElementById('filter-search'),
+        filterType: document.getElementById('filter-type'),
+        filterMin: document.getElementById('filter-min'),
+        filterMax: document.getElementById('filter-max'),
+        filterPlan: document.getElementById('filter-plan'),
+        filterAccount: document.getElementById('filter-account'),
+        
+        // Estatísticas
+        totalSpentEl: document.getElementById('total-spent'),
+        totalTransactionsEl: document.getElementById('total-transactions'),
+        projectionEl: document.getElementById('next-month-projection'),
+        
+        // Botões de relatório
+        monthlyReportBtn: document.getElementById('monthly-report-btn'),
+        weeklyReportBtn: document.getElementById('weekly-report-btn'),
+        interactiveReportBtn: document.getElementById('interactive-report-btn'),
+        
+        // Modais
+        reportModal: document.getElementById('report-modal'),
+        reportForm: document.getElementById('report-form'),
+        cancelReportBtn: document.getElementById('cancel-report-btn'),
+        reportGenerateText: document.getElementById('report-generate-text'),
+        reportLoadingText: document.getElementById('report-loading-text'),
+        
+        interactiveReportModal: document.getElementById('interactive-report-modal'),
+        closeIrModalBtn: document.getElementById('close-ir-modal'),
+        irForm: document.getElementById('interactive-report-form'),
+        irAccount: document.getElementById('ir-account'),
+        irCharts: document.getElementById('ir-charts'),
+        irDetails: document.getElementById('ir-details'),
+        
+        // Gastos recorrentes
+        recurringExpensesBtn: document.getElementById('recurring-expenses-btn'),
+        recurringModal: document.getElementById('recurring-modal'),
+        closeRecurringModalBtn: document.getElementById('close-recurring-modal'),
+        recurringForm: document.getElementById('recurring-form'),
+        recurringList: document.getElementById('recurring-list'),
+        processRecurringBtn: document.getElementById('process-recurring-btn')
+    };
+
+    // ===== VARIÁVEIS GLOBAIS =====
+    let expensesLineChart, expensesPieChart, planChart, mixedTypeChart, goalsChart, goalsPlanChart;
+    let allExpensesCache = [];
+    let currentUser = null;
+
+    // ===== GERENCIAMENTO DE TOKEN =====
+    function getToken() {
+        try {
+            const token = localStorage.getItem(CONFIG.TOKEN_STORAGE_KEY);
+            if (!token) return null;
+            
+            // Verificar se o token não está expirado
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (payload.exp * 1000 < Date.now()) {
+                console.log('🔒 Token expirado, removendo...');
+                removeAuthData();
+                return null;
+            }
+            
+            return token;
+        } catch (error) {
+            console.error('❌ Erro ao verificar token:', error);
+            removeAuthData();
+            return null;
+        }
+    }
+
+    function setAuthData(token, userData) {
+        try {
+            localStorage.setItem(CONFIG.TOKEN_STORAGE_KEY, token);
+            localStorage.setItem(CONFIG.USER_STORAGE_KEY, JSON.stringify(userData));
+            currentUser = userData;
+        } catch (error) {
+            console.error('❌ Erro ao salvar dados de autenticação:', error);
+        }
+    }
+
+    function removeAuthData() {
+        localStorage.removeItem(CONFIG.TOKEN_STORAGE_KEY);
+        localStorage.removeItem(CONFIG.USER_STORAGE_KEY);
+        currentUser = null;
+        cache.clear();
+    }
+
+    function getCurrentUser() {
+        if (currentUser) return currentUser;
+        
+        try {
+            const userData = localStorage.getItem(CONFIG.USER_STORAGE_KEY);
+            if (userData) {
+                currentUser = JSON.parse(userData);
+                return currentUser;
+            }
+        } catch (error) {
+            console.error('❌ Erro ao recuperar dados do usuário:', error);
+        }
+        
+        return null;
+    }
+
+    // ===== VERIFICAÇÃO DE AUTENTICAÇÃO =====
     function checkAuthentication() {
         const token = getToken();
         if (!token) {
-            console.log('Autenticação falhou - token ausente');
+            console.log('🔒 Autenticação falhou - token ausente');
             showLogin();
             return false;
         }
         return true;
     }
 
-    // Função para lidar com erros de autenticação
-    function handleAuthError(response) {
-        if (response.status === 401 || response.status === 403) {
-            console.log('Erro de autenticação detectado:', response.status);
-            showNotification('Sessão expirada. Faça login novamente.', 'error');
-            localStorage.removeItem('token');
-            localStorage.removeItem('username');
-            showLogin();
-            return true;
+    // ===== REQUISIÇÕES COM RETRY E TIMEOUT =====
+    async function fetchWithRetry(url, options = {}, retries = CONFIG.MAX_RETRIES) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+
+        const requestOptions = {
+            ...options,
+            signal: controller.signal
+        };
+
+        try {
+            const response = await fetch(url, requestOptions);
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            
+            if (retries > 0 && error.name !== 'AbortError') {
+                console.log(`🔄 Tentativa ${CONFIG.MAX_RETRIES - retries + 1} falhou, tentando novamente...`);
+                await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
+                return fetchWithRetry(url, options, retries - 1);
+            }
+            
+            throw error;
         }
-        return false;
     }
 
-    // Função melhorada para fazer requests com tratamento de autenticação
+    // ===== REQUISIÇÕES AUTENTICADAS =====
     async function authenticatedFetch(url, options = {}) {
         const token = getToken();
         if (!token) {
-            console.log('authenticatedFetch: Token não encontrado');
+            console.log('🔒 authenticatedFetch: Token não encontrado');
             showLogin();
             throw new Error('Token não encontrado');
         }
 
-        // Não sobrescrever Content-Type se for FormData
+        // Preparar headers
         const headers = {
             'Authorization': `Bearer ${token}`,
             ...options.headers
@@ -108,99 +235,230 @@ document.addEventListener('DOMContentLoaded', function() {
             headers['Content-Type'] = 'application/json';
         }
 
-        console.log('Fazendo request para:', url);
-        console.log('Headers:', headers);
-
-        const response = await fetch(url, {
+        const requestOptions = {
             ...options,
             headers
-        });
+        };
 
-        console.log('Response status:', response.status);
+        try {
+            const response = await fetchWithRetry(url, requestOptions);
+            
+            // Verificar se é erro de autenticação
+            if (response.status === 401 || response.status === 403) {
+                console.log('🔒 Erro de autenticação:', response.status);
+                handleAuthError(response);
+                throw new Error('Autenticação falhou');
+            }
 
-        if (response.status === 401 || response.status === 403) {
-            handleAuthError(response);
-            throw new Error('Autenticação falhou');
+            return response;
+        } catch (error) {
+            if (error.message.includes('401') || error.message.includes('403')) {
+                handleAuthError({ status: 401 });
+            }
+            throw error;
         }
-
-        return response;
     }
 
+    // ===== TRATAMENTO DE ERROS DE AUTENTICAÇÃO =====
+    function handleAuthError(response) {
+        if (response.status === 401 || response.status === 403) {
+            console.log('🔒 Erro de autenticação detectado:', response.status);
+            showNotification('Sessão expirada. Faça login novamente.', 'error');
+            removeAuthData();
+            showLogin();
+            return true;
+        }
+        return false;
+    }
+
+    // ===== EVENT LISTENERS OTIMIZADOS =====
     function addEventListeners() {
-        if (loginForm) loginForm.addEventListener('submit', handleLogin);
-        if (logoutButton) logoutButton.addEventListener('click', handleLogout);
-        if (filterYear) filterYear.addEventListener('change', fetchAllData);
-        if (filterMonth) filterMonth.addEventListener('change', fetchAllData);
-        if (addExpenseForm) addExpenseForm.addEventListener('submit', handleAddExpense);
-        if (expensesTableBody) expensesTableBody.addEventListener('click', handleTableClick);
-        if (weeklyReportBtn) weeklyReportBtn.addEventListener('click', handleWeeklyReportDownload);
-        if (monthlyReportBtn) monthlyReportBtn.addEventListener('click', openReportModal);
-        if (cancelReportBtn) cancelReportBtn.addEventListener('click', closeReportModal);
-        if (reportForm) reportForm.addEventListener('submit', handleMonthlyReportDownload);
-        if (businessCheckbox) businessCheckbox.addEventListener('change', toggleExpenseFields);
-        document.getElementById('filter-account').addEventListener('change', fetchAllData);
-        if (filterPlan) filterPlan.addEventListener('input', applyAllFilters);
-        if (interactiveReportBtn) interactiveReportBtn.addEventListener('click', () => {
-            if (interactiveReportModal) {
-                interactiveReportModal.classList.remove('hidden');
-                setTimeout(() => interactiveReportModal.classList.remove('opacity-0'), 10);
-                populateIrAccounts();
-            }
-        });
-        if (closeIrModalBtn) closeIrModalBtn.addEventListener('click', () => {
-            if (interactiveReportModal) {
-                interactiveReportModal.classList.add('opacity-0');
-                setTimeout(() => interactiveReportModal.classList.add('hidden'), 300);
-            }
-        });
+        // Login e logout
+        if (elements.loginForm) elements.loginForm.addEventListener('submit', handleLogin);
+        if (elements.logoutButton) elements.logoutButton.addEventListener('click', handleLogout);
         
-        // Event listeners para gastos recorrentes
-        if (recurringExpensesBtn) recurringExpensesBtn.addEventListener('click', openRecurringModal);
-        if (closeRecurringModalBtn) closeRecurringModalBtn.addEventListener('click', closeRecurringModal);
-        if (recurringForm) recurringForm.addEventListener('submit', handleRecurringExpenseSubmit);
-        if (processRecurringBtn) processRecurringBtn.addEventListener('click', processRecurringExpenses);
+        // Filtros com debounce
+        if (elements.filterYear) elements.filterYear.addEventListener('change', debounce(fetchAllData, 300));
+        if (elements.filterMonth) elements.filterMonth.addEventListener('change', debounce(fetchAllData, 300));
+        if (elements.filterAccount) elements.filterAccount.addEventListener('change', debounce(fetchAllData, 300));
+        if (elements.filterPlan) elements.filterPlan.addEventListener('input', debounce(applyAllFilters, 500));
+        
+        // Formulários
+        if (elements.addExpenseForm) elements.addExpenseForm.addEventListener('submit', handleAddExpense);
+        if (elements.businessCheckbox) elements.businessCheckbox.addEventListener('change', toggleExpenseFields);
+        
+        // Tabela
+        if (elements.expensesTableBody) elements.expensesTableBody.addEventListener('click', handleTableClick);
+        
+        // Relatórios
+        if (elements.weeklyReportBtn) elements.weeklyReportBtn.addEventListener('click', handleWeeklyReportDownload);
+        if (elements.monthlyReportBtn) elements.monthlyReportBtn.addEventListener('click', openReportModal);
+        if (elements.cancelReportBtn) elements.cancelReportBtn.addEventListener('click', closeReportModal);
+        if (elements.reportForm) elements.reportForm.addEventListener('submit', handleMonthlyReportDownload);
+        
+        // Modal relatório interativo
+        if (elements.interactiveReportBtn) {
+            elements.interactiveReportBtn.addEventListener('click', () => {
+                if (elements.interactiveReportModal) {
+                    elements.interactiveReportModal.classList.remove('hidden');
+                    setTimeout(() => elements.interactiveReportModal.classList.remove('opacity-0'), 10);
+                    populateIrAccounts();
+                }
+            });
+        }
+        
+        if (elements.closeIrModalBtn) {
+            elements.closeIrModalBtn.addEventListener('click', () => {
+                if (elements.interactiveReportModal) {
+                    elements.interactiveReportModal.classList.add('opacity-0');
+                    setTimeout(() => elements.interactiveReportModal.classList.add('hidden'), 300);
+                }
+            });
+        }
+        
+        // Gastos recorrentes
+        if (elements.recurringExpensesBtn) elements.recurringExpensesBtn.addEventListener('click', openRecurringModal);
+        if (elements.closeRecurringModalBtn) elements.closeRecurringModalBtn.addEventListener('click', closeRecurringModal);
+        if (elements.recurringForm) elements.recurringForm.addEventListener('submit', handleRecurringExpenseSubmit);
+        if (elements.processRecurringBtn) elements.processRecurringBtn.addEventListener('click', processRecurringExpenses);
     }
 
+    // ===== UTILITÁRIOS =====
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    function showNotification(message, type = 'info', duration = 5000) {
+        // Criar elemento de notificação
+        const notification = document.createElement('div');
+        notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 max-w-sm animate-fade-in ${
+            type === 'error' ? 'bg-red-500 text-white' :
+            type === 'success' ? 'bg-green-500 text-white' :
+            type === 'warning' ? 'bg-yellow-500 text-black' :
+            'bg-blue-500 text-white'
+        }`;
+        
+        notification.innerHTML = `
+            <div class="flex items-center justify-between">
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-xl">&times;</button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto remover após duração especificada
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, duration);
+    }
+
+    // ===== FUNÇÕES DE LOGIN E LOGOUT =====
     async function handleLogin(e) {
         e.preventDefault();
+        
         const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
-        if (!usernameInput || !passwordInput) return alert("Erro de configuração do HTML.");
+        const loginButton = document.querySelector('#login-form button[type="submit"]');
+        
+        if (!usernameInput || !passwordInput) {
+            showNotification('Erro de configuração do formulário.', 'error');
+            return;
+        }
+
         try {
-            const response = await fetch(`${API_BASE_URL}/api/login`, {
+            // Desabilitar botão durante o login
+            if (loginButton) {
+                loginButton.disabled = true;
+                loginButton.textContent = 'Entrando...';
+            }
+
+            const response = await fetchWithRetry(`${CONFIG.API_BASE_URL}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: usernameInput.value, password: passwordInput.value })
+                body: JSON.stringify({ 
+                    username: usernameInput.value.trim(), 
+                    password: passwordInput.value 
+                })
             });
+
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message);
-            localStorage.setItem('token', data.accessToken);
-            localStorage.setItem('username', usernameInput.value);
+            
+            if (!response.ok) {
+                throw new Error(data.message || 'Erro no login');
+            }
+
+            // Salvar dados de autenticação
+            setAuthData(data.accessToken, data.user);
+            
+            showNotification('Login realizado com sucesso!', 'success');
             showDashboard();
+            
+            // Limpar formulário
+            usernameInput.value = '';
+            passwordInput.value = '';
+
         } catch (error) {
-            alert(`Erro no login: ${error.message}`);
+            console.error('❌ Erro no login:', error);
+            showNotification(`Erro no login: ${error.message}`, 'error');
+        } finally {
+            // Reabilitar botão
+            if (loginButton) {
+                loginButton.disabled = false;
+                loginButton.textContent = 'Entrar';
+            }
         }
     }
 
     function handleLogout() {
-        localStorage.removeItem('token');
-        localStorage.removeItem('username');
-        showLogin();
+        // Confirmar logout
+        if (confirm('Tem certeza que deseja sair?')) {
+            removeAuthData();
+            showNotification('Logout realizado com sucesso!', 'success');
+            showLogin();
+        }
     }
 
     function showDashboard() {
-        if (loginSection) loginSection.style.display = 'none';
-        if (dashboardContent) dashboardContent.style.display = 'block';
-        if (welcomeUserSpan) welcomeUserSpan.textContent = `Bem-vindo, ${localStorage.getItem('username')}!`;
+        if (elements.loginSection) elements.loginSection.style.display = 'none';
+        if (elements.dashboardContent) elements.dashboardContent.style.display = 'block';
+        
+        const user = getCurrentUser();
+        if (elements.welcomeUserSpan && user) {
+            elements.welcomeUserSpan.textContent = `Bem-vindo, ${user.username}!`;
+        }
+        
         initializeDashboard();
         checkMonthlyReportReminder();
     }
 
     function showLogin() {
-        if (loginSection) loginSection.style.display = 'flex';
-        if (dashboardContent) dashboardContent.style.display = 'none';
+        if (elements.loginSection) elements.loginSection.style.display = 'flex';
+        if (elements.dashboardContent) elements.dashboardContent.style.display = 'none';
+        
+        // Limpar dados cached
+        cache.clear();
+        
+        // Reset charts
+        if (expensesLineChart) expensesLineChart.destroy();
+        if (expensesPieChart) expensesPieChart.destroy();
+        if (planChart) planChart.destroy();
+        if (mixedTypeChart) mixedTypeChart.destroy();
+        if (goalsChart) goalsChart.destroy();
+        if (goalsPlanChart) goalsPlanChart.destroy();
     }
 
+    // ===== INICIALIZAÇÃO DO DASHBOARD =====
     function initializeDashboard() {
         populateAccountFilter();
         populateFilterOptions();
@@ -210,42 +468,57 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function populateFilterOptions() {
-        if (!filterYear || !filterMonth) return;
-        filterYear.innerHTML = '';
-        filterMonth.innerHTML = '';
+        if (!elements.filterYear || !elements.filterMonth) return;
+        elements.filterYear.innerHTML = '';
+        elements.filterMonth.innerHTML = '';
         const currentYear = new Date().getFullYear();
-        for (let i = currentYear; i >= currentYear - 5; i--) filterYear.add(new Option(i, i));
+        for (let i = currentYear; i >= currentYear - 5; i--) elements.filterYear.add(new Option(i, i));
         const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-        months.forEach((month, index) => filterMonth.add(new Option(month, index + 1)));
-        filterYear.value = currentYear;
-        filterMonth.value = new Date().getMonth() + 1;
+        months.forEach((month, index) => elements.filterMonth.add(new Option(month, index + 1)));
+        elements.filterYear.value = currentYear;
+        elements.filterMonth.value = new Date().getMonth() + 1;
     }
 
     function toggleExpenseFields() {
-        if (!personalFields || !businessFields || !businessCheckbox) return;
-        personalFields.classList.toggle('hidden', businessCheckbox.checked);
-        businessFields.classList.toggle('hidden', !businessCheckbox.checked);
+        if (!elements.personalFields || !elements.businessFields || !elements.businessCheckbox) return;
+        elements.personalFields.classList.toggle('hidden', elements.businessCheckbox.checked);
+        elements.businessFields.classList.toggle('hidden', !elements.businessCheckbox.checked);
     }
 
+    // ===== FETCH DE DADOS =====
     async function fetchAllData() {
         try {
             if (!checkAuthentication()) {
-                console.log('Autenticação falhou em fetchAllData');
+                console.log('🔒 Autenticação falhou em fetchAllData');
                 return;
             }
 
-            console.log('Iniciando fetchAllData...');
-            await fetchAndRenderExpenses();
-            await fetchAndRenderDashboardMetrics();
-            await fetchAndRenderGoalsChart();
-            console.log('fetchAllData concluído');
+            console.log('📊 Iniciando fetchAllData...');
+            showLoadingState(true);
+            
+            await Promise.all([
+                fetchAndRenderExpenses(),
+                fetchAndRenderDashboardMetrics(),
+                fetchAndRenderGoalsChart()
+            ]);
+            
+            console.log('✅ fetchAllData concluído');
         } catch (error) {
-            console.error('Erro em fetchAllData:', error);
-            showNotification('Erro ao carregar dados do dashboard', 'error');
+            console.error('❌ Erro em fetchAllData:', error);
+            showNotification('Erro ao carregar dados', 'error');
+        } finally {
+            showLoadingState(false);
         }
     }
 
-    // --- Busca tetos e renderiza gráfico de limites/alertas ---
+    function showLoadingState(isLoading) {
+        const loadingElements = document.querySelectorAll('.loading-indicator');
+        loadingElements.forEach(el => {
+            el.style.display = isLoading ? 'block' : 'none';
+        });
+    }
+
+    // ===== GRÁFICOS DE METAS =====
     async function fetchAndRenderGoalsChart() {
         try {
             if (!checkAuthentication()) return;
@@ -2756,26 +3029,20 @@ document.addEventListener('DOMContentLoaded', function() {
         showNotification('Funcionalidade de exportação PDF em desenvolvimento', 'info');
     }
 
-    // Função debounce para busca
-    function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
+    // ===== INICIALIZAÇÃO PRINCIPAL =====
+    function init() {
+        // Verificar autenticação inicial
+        if (checkAuthentication()) {
+            showDashboard();
+        } else {
+            showLogin();
+        }
+        
+        // Adicionar event listeners
+        addEventListeners();
     }
 
-    // Inicializar event listeners quando o DOM estiver pronto
-    document.addEventListener('DOMContentLoaded', function() {
-        initializeInvoiceEventListeners();
-    });
-
-    // Chamar inicialização
+    // ===== INICIALIZAR QUANDO DOM ESTIVER PRONTO =====
     init();
 
-    // ========== FIM FUNÇÕES GASTOS RECORRENTES ==========
 });

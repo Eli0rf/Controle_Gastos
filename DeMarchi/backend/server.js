@@ -1,16 +1,33 @@
-// server.js (Versão Final e Completa)
+// server.js - Controle de Gastos Backend - Versão 3.0 Railway Optimized
+// Atualizado com segurança máxima, performance otimizada e funcionalidades completas
 
-// --- 1. DEPENDÊNCIAS ---
+// --- 1. DEPENDÊNCIAS E CONFIGURAÇÕES ---
 const express = require('express');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const multer = require('multer');
-const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const compression = require('compression');
 const pdfkit = require('pdfkit');
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+// ChartJS com fallback graceful
+let ChartJSNodeCanvas;
+try {
+    ChartJSNodeCanvas = require('chartjs-node-canvas').ChartJSNodeCanvas;
+    console.log('✅ ChartJS-node-canvas carregado com sucesso');
+} catch (error) {
+    console.warn('⚠️  ChartJS-node-canvas não disponível, PDFs sem gráficos');
+    ChartJSNodeCanvas = null;
+}
+
+// Configurações do banco de dados
 const { pool, testConnection, closePool } = require('./config/db');
 require('dotenv').config();
 
@@ -18,194 +35,830 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- 3. MIDDLEWARES ---
-app.use(cors({
-    origin: '*', // ou especifique o domínio do frontend se necessário
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Content-Disposition']
-}));
-app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Validação de variáveis de ambiente críticas
+const requiredEnvVars = ['JWT_SECRET', 'DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
-// --- 3.1. ROTA DE HEALTH CHECK ---
+if (missingEnvVars.length > 0) {
+    console.error('❌ ERRO CRÍTICO: Variáveis de ambiente obrigatórias não configuradas:', missingEnvVars);
+    process.exit(1);
+}
+
+// --- 2.1. CONFIGURAÇÕES DE SEGURANÇA APRIMORADAS ---
+// Rate limiting anti-bruteforce para login
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 5, // máximo 5 tentativas por IP
+    message: { 
+        success: false,
+        message: 'Muitas tentativas de login. Tente novamente em 15 minutos.',
+        code: 'RATE_LIMIT_EXCEEDED'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        // Combinar IP e User-Agent para melhor identificação
+        return `${req.ip}-${req.get('User-Agent') || 'unknown'}`;
+    }
+});
+
+// Rate limiting geral
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 200, // Aumentado para 200 requests por IP (melhor para Railway)
+    message: { 
+        success: false,
+        message: 'Muitas requisições. Tente novamente em 15 minutos.',
+        code: 'RATE_LIMIT_EXCEEDED'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+        // Pular rate limiting para health checks
+        return req.path === '/health' || req.path === '/';
+    }
+});
+
+// Helmet para headers de segurança otimizado para Railway
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
+            imgSrc: ["'self'", "data:", "https:", "blob:"],
+            connectSrc: ["'self'", "https://controlegastos-production.up.railway.app", "wss:"],
+            fontSrc: ["'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://fonts.gstatic.com"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+        },
+    },
+    crossOriginEmbedderPolicy: false,
+    hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+    }
+}));
+
+// Compressão para melhor performance
+app.use(compression({
+    level: 6,
+    threshold: 1024,
+    filter: (req, res) => {
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        return compression.filter(req, res);
+    }
+}));
+
+// Rate limiting aplicado globalmente
+app.use(generalLimiter);
+
+// --- 3. MIDDLEWARES APRIMORADOS ---
+// CORS otimizado para Railway
+app.use(cors({
+    origin: function (origin, callback) {
+        // Permitir requisições sem origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+            'https://controlegastos-production.up.railway.app',
+            'https://controle-gastos-frontend.up.railway.app',
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'http://127.0.0.1:3000',
+            'http://127.0.0.1:3001'
+        ];
+        
+        // Em desenvolvimento, permitir qualquer origin localhost
+        if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
+            return callback(null, true);
+        }
+        
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        
+        callback(new Error('Não permitido pelo CORS'));
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Content-Disposition', 'X-Total-Count'],
+    credentials: true,
+    maxAge: 86400 // Cache preflight por 24 horas
+}));
+
+// Middlewares de parsing com limites de segurança
+app.use(express.json({ 
+    limit: '10mb',
+    strict: true,
+    type: 'application/json'
+}));
+app.use(express.urlencoded({ 
+    extended: true, 
+    limit: '10mb',
+    parameterLimit: 1000
+}));
+
+// Headers de segurança customizados
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+    next();
+});
+
+// Middleware de logging para debugging
+if (process.env.NODE_ENV !== 'production') {
+    app.use((req, res, next) => {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`);
+        next();
+    });
+}
+
+// Servir arquivos estáticos com cache otimizado
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+    maxAge: '7d', // Cache por 7 dias
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, path) => {
+        res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 dias
+    }
+}));
+
+// --- 3.1. ROTAS DE HEALTH CHECK OTIMIZADAS ---
 app.get('/', (req, res) => {
     res.status(200).json({ 
-        status: 'ok', 
-        message: 'Servidor de Controle de Gastos funcionando',
-        timestamp: new Date().toISOString()
+        success: true,
+        status: 'online', 
+        service: 'Controle de Gastos API',
+        version: '3.0.0',
+        environment: process.env.NODE_ENV || 'development',
+        timestamp: new Date().toISOString(),
+        uptime: Math.floor(process.uptime()),
+        features: {
+            authentication: true,
+            fileUpload: true,
+            pdfGeneration: true,
+            chartGeneration: ChartJSNodeCanvas ? true : false,
+            recurringExpenses: true,
+            billingPeriods: true,
+            rateLimit: true,
+            security: true
+        },
+        endpoints: {
+            health: '/health',
+            auth: '/api/login',
+            register: '/api/register',
+            expenses: '/api/expenses',
+            dashboard: '/api/dashboard',
+            reports: '/api/reports',
+            bills: '/api/bills'
+        }
     });
 });
 
 app.get('/health', async (req, res) => {
     try {
-        // Verificar conexão com o banco
+        const startTime = Date.now();
         const isConnected = await testConnection();
-        res.status(200).json({ 
+        const dbResponseTime = Date.now() - startTime;
+        const memoryUsage = process.memoryUsage();
+        
+        const healthStatus = {
+            success: true,
             status: 'healthy',
-            database: isConnected ? 'connected' : 'disconnected',
-            timestamp: new Date().toISOString()
-        });
+            timestamp: new Date().toISOString(),
+            uptime: Math.floor(process.uptime()),
+            memory: {
+                used: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+                total: Math.round(memoryUsage.heapTotal / 1024 / 1024),
+                unit: 'MB'
+            },
+            database: {
+                connected: isConnected,
+                responseTime: dbResponseTime,
+                unit: 'ms'
+            },
+            environment: process.env.NODE_ENV || 'development',
+            features: {
+                chartGeneration: ChartJSNodeCanvas ? 'available' : 'disabled'
+            }
+        };
+
+        if (!isConnected) {
+            healthStatus.status = 'degraded';
+            healthStatus.success = false;
+        }
+
+        res.status(isConnected ? 200 : 503).json(healthStatus);
     } catch (error) {
+        console.error('❌ Health check falhou:', error);
         res.status(503).json({ 
+            success: false,
             status: 'unhealthy',
-            database: 'disconnected',
             error: error.message,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            database: {
+                connected: false,
+                error: 'Connection failed'
+            }
         });
     }
 });
 
-// --- 4. CONFIGURAÇÃO DO BANCO DE DADOS ---
-// Pool já configurado em config/db.js
+// --- 4. CONFIGURAÇÃO DO MULTER APRIMORADA (UPLOAD SEGURO) ---
+// Criar diretório de uploads se não existir
+const uploadsDir = path.join(__dirname, 'uploads');
+fsSync.mkdirSync(uploadsDir, { recursive: true });
 
-// --- 5. CONFIGURAÇÃO DO MULTER (UPLOAD DE FICHEIROS) ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadPath = 'uploads/';
-        fs.mkdirSync(uploadPath, { recursive: true });
-        cb(null, uploadPath);
+        cb(null, uploadsDir);
     },
     filename: (req, file, cb) => {
+        // Gerar nome único e seguro
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+        const fileExt = path.extname(file.originalname).toLowerCase();
+        const safeName = file.fieldname + '-' + uniqueSuffix + fileExt;
+        cb(null, safeName);
     }
 });
-const upload = multer({ storage: storage });
 
-// --- 6. MIDDLEWARE DE AUTENTICAÇÃO ---
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+const fileFilter = (req, file, cb) => {
+    // Tipos de arquivo permitidos com verificação rigorosa
+    const allowedMimes = [
+        'image/jpeg',
+        'image/jpg', 
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'application/pdf'
+    ];
     
-    console.log('Auth middleware - Headers:', req.headers);
-    console.log('Auth middleware - Token:', token ? 'Token presente' : 'Token ausente');
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'];
+    const fileExt = path.extname(file.originalname).toLowerCase();
     
-    if (token == null) {
-        console.log('Auth middleware - Token nulo, retornando 401');
-        return res.status(401).json({ message: 'Acesso não autorizado.' });
+    if (allowedMimes.includes(file.mimetype) && allowedExts.includes(fileExt)) {
+        cb(null, true);
+    } else {
+        cb(new Error(`Tipo de arquivo não permitido: ${file.mimetype}. Use apenas: JPEG, PNG, GIF, WebP ou PDF.`), false);
     }
-
-    jwt.verify(token, process.env.JWT_SECRET || 'seu_segredo_super_secreto', (err, user) => {
-        if (err) {
-            console.log('Auth middleware - Erro na verificação do token:', err.message);
-            return res.status(403).json({ message: 'Token inválido ou expirado.' });
-        }
-        console.log('Auth middleware - Token válido para usuário:', user.username);
-        req.user = user;
-        next();
-    });
 };
 
-// --- 7. ROTAS PÚBLICAS (AUTENTICAÇÃO) ---
+const upload = multer({ 
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB máximo
+        files: 1,
+        fields: 20
+    },
+    onError: (err, next) => {
+        console.error('❌ Erro no upload:', err);
+        next(err);
+    }
+});
+
+// --- 5. MIDDLEWARE DE AUTENTICAÇÃO APRIMORADO ---
+const authenticateToken = async (req, res, next) => {
+    try {
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1];
+        
+        if (!token) {
+            return res.status(401).json({ 
+                success: false,
+                message: 'Token de acesso requerido.',
+                code: 'NO_TOKEN'
+            });
+        }
+
+        const jwtSecret = process.env.JWT_SECRET;
+        if (!jwtSecret) {
+            console.error('❌ JWT_SECRET não configurado!');
+            return res.status(500).json({ 
+                success: false,
+                message: 'Erro de configuração do servidor.',
+                code: 'SERVER_CONFIG_ERROR'
+            });
+        }
+
+        // Verificar token com validações extras
+        jwt.verify(token, jwtSecret, { 
+            issuer: 'controle-gastos-api',
+            audience: 'controle-gastos-client',
+            maxAge: '24h'
+        }, async (err, decoded) => {
+            if (err) {
+                console.log('❌ Token inválido:', err.message);
+                let errorCode = 'INVALID_TOKEN';
+                let errorMessage = 'Token inválido ou expirado.';
+                
+                if (err.name === 'TokenExpiredError') {
+                    errorCode = 'TOKEN_EXPIRED';
+                    errorMessage = 'Token expirado. Faça login novamente.';
+                } else if (err.name === 'JsonWebTokenError') {
+                    errorCode = 'TOKEN_MALFORMED';
+                    errorMessage = 'Token malformado.';
+                }
+                
+                return res.status(403).json({ 
+                    success: false,
+                    message: errorMessage,
+                    code: errorCode
+                });
+            }
+            
+            // Verificar se usuário ainda existe e está ativo
+            try {
+                const [userCheck] = await pool.query(
+                    'SELECT id, username FROM users WHERE id = ?', 
+                    [decoded.id]
+                );
+                
+                if (userCheck.length === 0) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Usuário não encontrado.',
+                        code: 'USER_NOT_FOUND'
+                    });
+                }
+                
+                req.user = {
+                    id: decoded.id,
+                    username: decoded.username
+                };
+                next();
+            } catch (dbError) {
+                console.error('❌ Erro ao verificar usuário:', dbError);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Erro interno do servidor.',
+                    code: 'DATABASE_ERROR'
+                });
+            }
+        });
+    } catch (error) {
+        console.error('❌ Erro no middleware de autenticação:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Erro interno do servidor.',
+            code: 'INTERNAL_ERROR'
+        });
+    }
+};
+
+// --- 6. ROTAS PÚBLICAS (AUTENTICAÇÃO) OTIMIZADAS ---
 app.post('/api/register', async (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: 'Utilizador e senha são obrigatórios.' });
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await pool.query('INSERT INTO users (username, password) VALUES (?, ?)', [username, hashedPassword]);
-        res.status(201).json({ message: 'Utilizador criado com sucesso!' });
+        const { username, password } = req.body;
+        
+        // Validações de entrada rigorosas
+        if (!username || !password) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Utilizador e senha são obrigatórios.',
+                code: 'MISSING_CREDENTIALS'
+            });
+        }
+
+        if (typeof username !== 'string' || typeof password !== 'string') {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Dados inválidos fornecidos.',
+                code: 'INVALID_DATA_TYPE'
+            });
+        }
+
+        // Validação de comprimento e caracteres
+        if (username.length < 3 || username.length > 50) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Nome de utilizador deve ter entre 3 e 50 caracteres.',
+                code: 'INVALID_USERNAME_LENGTH'
+            });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Senha deve ter pelo menos 8 caracteres.',
+                code: 'WEAK_PASSWORD'
+            });
+        }
+
+        // Validação de caracteres especiais na senha
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/;
+        if (!passwordRegex.test(password)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Senha deve conter pelo menos: 1 letra minúscula, 1 maiúscula, 1 número e 1 caractere especial.',
+                code: 'PASSWORD_COMPLEXITY'
+            });
+        }
+
+        // Validação de username (apenas alfanumérico e underscore)
+        const usernameRegex = /^[a-zA-Z0-9_]+$/;
+        if (!usernameRegex.test(username)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Nome de utilizador deve conter apenas letras, números e underscore.',
+                code: 'INVALID_USERNAME_FORMAT'
+            });
+        }
+
+        // Verificar se usuário já existe
+        const [existingUsers] = await pool.query(
+            'SELECT id FROM users WHERE username = ?', 
+            [username.toLowerCase().trim()]
+        );
+
+        if (existingUsers.length > 0) {
+            return res.status(409).json({ 
+                success: false,
+                message: 'Nome de utilizador já existe.',
+                code: 'USERNAME_EXISTS'
+            });
+        }
+
+        // Hash da senha com salt mais forte
+        const saltRounds = 14; // Aumentado para maior segurança
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        
+        // Inserir novo usuário com timestamp
+        const [result] = await pool.query(
+            'INSERT INTO users (username, password, created_at, last_login) VALUES (?, ?, NOW(), NULL)', 
+            [username.toLowerCase().trim(), hashedPassword]
+        );
+        
+        console.log(`✅ Novo usuário registrado: ${username} (ID: ${result.insertId})`);
+        
+        res.status(201).json({ 
+            success: true,
+            message: 'Utilizador criado com sucesso!',
+            code: 'USER_CREATED',
+            data: {
+                userId: result.insertId,
+                username: username.toLowerCase().trim()
+            }
+        });
+
     } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Nome de utilizador já existe.' });
-        console.error('Erro no registo:', error);
-        res.status(500).json({ message: 'Erro interno no servidor.' });
+        console.error('❌ Erro no registo:', error);
+        
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ 
+                success: false,
+                message: 'Nome de utilizador já existe.',
+                code: 'USERNAME_EXISTS'
+            });
+        }
+        
+        res.status(500).json({ 
+            success: false,
+            message: 'Erro interno no servidor.',
+            code: 'INTERNAL_ERROR'
+        });
     }
 });
 
-app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: 'Utilizador e senha são obrigatórios.' });
+app.post('/api/login', loginLimiter, async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+        const { username, password } = req.body;
+        
+        // Validações básicas
+        if (!username || !password) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Utilizador e senha são obrigatórios.',
+                code: 'MISSING_CREDENTIALS'
+            });
+        }
+
+        if (typeof username !== 'string' || typeof password !== 'string') {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Dados inválidos fornecidos.',
+                code: 'INVALID_DATA_TYPE'
+            });
+        }
+
+        // Buscar usuário com dados de auditoria
+        const [rows] = await pool.query(
+            'SELECT id, username, password, created_at, last_login FROM users WHERE username = ?', 
+            [username.toLowerCase().trim()]
+        );
+        
         const user = rows[0];
-        if (!user) return res.status(404).json({ message: 'Utilizador não encontrado.' });
+        if (!user) {
+            // Delay de segurança para evitar timing attacks
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return res.status(401).json({ 
+                success: false,
+                message: 'Credenciais inválidas.',
+                code: 'INVALID_CREDENTIALS'
+            });
+        }
+
+        // Verificar senha com timing constante
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
-        if (!isPasswordCorrect) return res.status(401).json({ message: 'Senha incorreta.' });
-        const accessToken = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET || 'seu_segredo_super_secreto', { expiresIn: '8h' });
-        res.json({ accessToken });
+        if (!isPasswordCorrect) {
+            // Log da tentativa de login falhada
+            console.warn(`⚠️  Tentativa de login falhada para usuário: ${username} - IP: ${req.ip}`);
+            return res.status(401).json({ 
+                success: false,
+                message: 'Credenciais inválidas.',
+                code: 'INVALID_CREDENTIALS'
+            });
+        }
+
+        // Gerar token JWT com claims extras
+        const jwtSecret = process.env.JWT_SECRET;
+        if (!jwtSecret) {
+            console.error('❌ JWT_SECRET não configurado!');
+            return res.status(500).json({ 
+                success: false,
+                message: 'Erro de configuração do servidor.',
+                code: 'SERVER_CONFIG_ERROR'
+            });
+        }
+
+        const tokenPayload = {
+            id: user.id,
+            username: user.username,
+            iat: Math.floor(Date.now() / 1000),
+            loginTime: new Date().toISOString()
+        };
+
+        const accessToken = jwt.sign(
+            tokenPayload, 
+            jwtSecret, 
+            { 
+                expiresIn: '24h',
+                issuer: 'controle-gastos-api',
+                audience: 'controle-gastos-client',
+                algorithm: 'HS256'
+            }
+        );
+
+        // Atualizar último login e log de acesso
+        await pool.query(
+            'UPDATE users SET last_login = NOW() WHERE id = ?', 
+            [user.id]
+        );
+
+        console.log(`✅ Login bem-sucedido: ${user.username} (ID: ${user.id}) - IP: ${req.ip}`);
+        
+        res.json({ 
+            success: true,
+            message: 'Login realizado com sucesso.',
+            accessToken,
+            user: {
+                id: user.id,
+                username: user.username,
+                createdAt: user.created_at,
+                lastLogin: user.last_login
+            },
+            expiresIn: '24h',
+            tokenType: 'Bearer'
+        });
+
     } catch (error) {
-        console.error('Erro no login:', error);
-        res.status(500).json({ message: 'Erro interno no servidor.' });
+        console.error('❌ Erro no login:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Erro interno no servidor.',
+            code: 'INTERNAL_ERROR'
+        });
     }
 });
 
-// --- 8. ROTAS PROTEGIDAS ---
+// --- 7. ROTAS PROTEGIDAS OTIMIZADAS ---
 app.post('/api/expenses', authenticateToken, upload.single('invoice'), async (req, res) => {
     try {
         const {
             transaction_date,
-            amount, // Valor da parcela
+            amount,
             description,
             account,
             account_plan_code,
-            total_installments // Número total de parcelas
+            total_installments
         } = req.body;
 
-        const is_business_expense = req.body.is_business_expense === 'true';
-        const has_invoice = req.body.has_invoice === 'true';
+        const is_business_expense = req.body.is_business_expense === 'true' || req.body.is_business_expense === true;
+        const has_invoice = req.body.has_invoice === 'true' || req.body.has_invoice === true;
         const userId = req.user.id;
         const invoicePath = req.file ? req.file.path : null;
 
-        // Validação dos campos obrigatórios
-        if (!transaction_date || !amount || !description || !account || !total_installments) {
-            return res.status(400).json({ message: 'Campos obrigatórios em falta.' });
+        // Validação rigorosa dos campos obrigatórios
+        if (!transaction_date || !amount || !description || !account) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Campos obrigatórios: data, valor, descrição e conta.',
+                code: 'MISSING_REQUIRED_FIELDS'
+            });
         }
 
+        // Validação de tipos de dados
         const installmentAmount = parseFloat(amount);
-        const numberOfInstallments = parseInt(total_installments, 10);
+        const numberOfInstallments = parseInt(total_installments, 10) || 1;
 
-        if (isNaN(installmentAmount) || isNaN(numberOfInstallments)) {
-            return res.status(400).json({ message: 'Valor e número de parcelas devem ser números válidos.' });
+        if (isNaN(installmentAmount) || installmentAmount <= 0) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Valor deve ser um número positivo.',
+                code: 'INVALID_AMOUNT'
+            });
+        }
+
+        if (numberOfInstallments < 1 || numberOfInstallments > 60) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Número de parcelas deve estar entre 1 e 60.',
+                code: 'INVALID_INSTALLMENTS'
+            });
+        }
+
+        // Validação da data
+        const transactionDate = new Date(transaction_date);
+        if (isNaN(transactionDate.getTime())) {
+            return res.status(400).json({
+                success: false,
+                message: 'Data da transação inválida.',
+                code: 'INVALID_DATE'
+            });
+        }
+
+        // Validação da conta
+        const allowedAccounts = ['Nu Bank Ketlyn', 'Nu Vainer', 'Ourocard Ketlyn', 'PicPay Vainer', 'PIX', 'Boleto'];
+        if (!allowedAccounts.includes(account)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Conta não permitida.',
+                code: 'INVALID_ACCOUNT'
+            });
+        }
+
+        // Validação do plano de contas para gastos pessoais
+        if (!is_business_expense && account_plan_code && (isNaN(parseInt(account_plan_code)) || parseInt(account_plan_code) < 1)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Código do plano de contas inválido.',
+                code: 'INVALID_ACCOUNT_PLAN'
+            });
         }
 
         const calculatedTotalAmount = installmentAmount * numberOfInstallments;
+        const insertedExpenses = [];
 
-        for (let i = 0; i < numberOfInstallments; i++) {
-            const installmentDate = new Date(transaction_date);
-            installmentDate.setMonth(installmentDate.getMonth() + i);
+        // Transação para garantir consistência
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
 
-            const installmentDescription = numberOfInstallments > 1
-                ? `${description} (Parcela ${i + 1}/${numberOfInstallments})`
-                : description;
+        try {
+            for (let i = 0; i < numberOfInstallments; i++) {
+                const installmentDate = new Date(transactionDate);
+                installmentDate.setMonth(installmentDate.getMonth() + i);
 
-            const sql = `
-                INSERT INTO expenses (
-                    user_id, transaction_date, amount, description, account,
-                    is_business_expense, account_plan_code, has_invoice, invoice_path,
-                    total_purchase_amount, installment_number, total_installments
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const installmentDescription = numberOfInstallments > 1
+                    ? `${description} (Parcela ${i + 1}/${numberOfInstallments})`
+                    : description;
 
-            const params = [
-                userId,
-                installmentDate.toISOString().slice(0, 10),
-                installmentAmount.toFixed(2),
-                installmentDescription,
-                account,
-                is_business_expense,
-                is_business_expense ? null : (account_plan_code || null),
-                (is_business_expense && i === 0 && has_invoice) ? 1 : null,
-                (is_business_expense && i === 0 && has_invoice) ? invoicePath : null,
-                calculatedTotalAmount.toFixed(2),
-                i + 1,
-                numberOfInstallments
-            ];
+                const sql = `
+                    INSERT INTO expenses (
+                        user_id, transaction_date, amount, description, account,
+                        is_business_expense, account_plan_code, has_invoice, invoice_path,
+                        total_purchase_amount, installment_number, total_installments
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-            await pool.query(sql, params);
+                const params = [
+                    userId,
+                    installmentDate.toISOString().slice(0, 10),
+                    installmentAmount.toFixed(2),
+                    installmentDescription,
+                    account,
+                    is_business_expense ? 1 : 0,
+                    is_business_expense ? null : (account_plan_code || null),
+                    (is_business_expense && i === 0 && has_invoice) ? 1 : 0,
+                    (is_business_expense && i === 0 && has_invoice) ? invoicePath : null,
+                    calculatedTotalAmount.toFixed(2),
+                    i + 1,
+                    numberOfInstallments
+                ];
+
+                const [result] = await connection.query(sql, params);
+                insertedExpenses.push({
+                    id: result.insertId,
+                    installment: i + 1,
+                    date: installmentDate.toISOString().slice(0, 10),
+                    amount: installmentAmount
+                });
+            }
+
+            await connection.commit();
+            console.log(`✅ ${numberOfInstallments} despesa(s) adicionada(s) para usuário ${userId}`);
+
+            res.status(201).json({ 
+                success: true,
+                message: `${numberOfInstallments} despesa(s) adicionada(s) com sucesso!`,
+                data: {
+                    totalExpenses: numberOfInstallments,
+                    totalAmount: calculatedTotalAmount,
+                    installmentAmount: installmentAmount,
+                    expenses: insertedExpenses
+                }
+            });
+
+        } catch (transactionError) {
+            await connection.rollback();
+            throw transactionError;
+        } finally {
+            connection.release();
         }
 
-        res.status(201).json({ message: 'Gasto(s) parcelado(s) adicionado(s) com sucesso!' });
     } catch (error) {
-        console.error('ERRO AO ADICIONAR GASTO:', error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor ao adicionar o gasto.' });
+        console.error('❌ Erro ao adicionar gasto:', error);
+        
+        // Remover arquivo enviado se houve erro
+        if (req.file && req.file.path) {
+            try {
+                await fs.unlink(req.file.path);
+            } catch (unlinkError) {
+                console.error('❌ Erro ao remover arquivo:', unlinkError);
+            }
+        }
+
+        res.status(500).json({ 
+            success: false,
+            message: 'Erro interno ao adicionar gasto.',
+            code: 'INTERNAL_ERROR'
+        });
     }
 });
 
 app.get('/api/expenses', authenticateToken, async (req, res) => {
-    const userId = req.user.id;
-    const { year, month, account, start_date, end_date, include_recurring, billing_period } = req.query;
-
     try {
-        let sql = 'SELECT * FROM expenses WHERE user_id = ?';
+        const userId = req.user.id;
+        const { 
+            year, 
+            month, 
+            account, 
+            start_date, 
+            end_date, 
+            include_recurring, 
+            billing_period,
+            limit = 1000,
+            offset = 0,
+            sort_by = 'transaction_date',
+            sort_order = 'DESC'
+        } = req.query;
+
+        // Validação de parâmetros
+        const validSortFields = ['transaction_date', 'amount', 'description', 'account', 'created_at'];
+        const validSortOrders = ['ASC', 'DESC'];
+        
+        if (!validSortFields.includes(sort_by)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Campo de ordenação inválido.',
+                code: 'INVALID_SORT_FIELD'
+            });
+        }
+
+        if (!validSortOrders.includes(sort_order.toUpperCase())) {
+            return res.status(400).json({
+                success: false,
+                message: 'Ordem de classificação inválida.',
+                code: 'INVALID_SORT_ORDER'
+            });
+        }
+
+        // Definir períodos de faturamento
+        const billingPeriods = {
+            'Nu Bank Ketlyn': { startDay: 2, endDay: 1 },
+            'Nu Vainer': { startDay: 2, endDay: 1 },
+            'Ourocard Ketlyn': { startDay: 17, endDay: 16 },
+            'PicPay Vainer': { startDay: 1, endDay: 30 },
+            'PIX': { startDay: 1, endDay: 30, isRecurring: true },
+            'Boleto': { startDay: 1, endDay: 30, isRecurring: true }
+        };
+
+        // Construir query SQL com otimizações
+        let sql = `
+            SELECT 
+                id, user_id, transaction_date, amount, description, account,
+                is_business_expense, account_plan_code, has_invoice, invoice_path,
+                total_purchase_amount, installment_number, total_installments,
+                is_recurring_expense, created_at
+            FROM expenses 
+            WHERE user_id = ?
+        `;
         const params = [userId];
 
         // Filtro por conta
@@ -214,25 +867,33 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
             params.push(account);
         }
 
-        // Filtrar gastos recorrentes se não for explicitamente solicitado
+        // Filtrar gastos recorrentes se não explicitamente solicitado
         if (include_recurring !== 'true') {
-            // Para contas que não são PIX ou Boleto, não incluir gastos recorrentes
-            // Para PIX e Boleto, incluir apenas se for busca por fatura
             if (account && ['PIX', 'Boleto'].includes(account)) {
-                // Se for busca por período de fatura, incluir recorrentes
-                // Se for busca geral, excluir recorrentes
                 if (!start_date && !end_date && billing_period !== 'true') {
-                    sql += ' AND is_recurring_expense = 0';
+                    sql += ' AND (is_recurring_expense = 0 OR is_recurring_expense IS NULL)';
                 }
             }
         }
 
-        // Permite busca por intervalo de datas explícito (usado na busca de fatura)
+        // Filtro por datas
         if (start_date && end_date) {
+            // Validar formato das datas
+            const startDateObj = new Date(start_date);
+            const endDateObj = new Date(end_date);
+            
+            if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Formato de data inválido.',
+                    code: 'INVALID_DATE_FORMAT'
+                });
+            }
+
             sql += ' AND transaction_date >= ? AND transaction_date <= ?';
             params.push(start_date, end_date);
         } else if (billing_period === 'true' && account && billingPeriods[account] && year && month) {
-            // Filtro por período vigente de fatura
+            // Período vigente de fatura
             const { startDay, endDay, isRecurring } = billingPeriods[account];
             
             if (!isRecurring) {
@@ -248,12 +909,11 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
                 sql += ' AND transaction_date >= ? AND transaction_date <= ?';
                 params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
             } else {
-                // Para PIX e Boleto, filtrar apenas por mês/ano normal
                 sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
                 params.push(year, month);
             }
         } else if (account && billingPeriods[account] && year && month && billing_period !== 'false') {
-            // Para contas PIX e Boleto, não aplicar filtro de período de fatura por padrão
+            // Aplicar período de fatura padrão
             if (!billingPeriods[account].isRecurring) {
                 const { startDay, endDay } = billingPeriods[account];
                 const startDate = new Date(year, month - 1, startDay);
@@ -268,7 +928,6 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
                 sql += ' AND transaction_date >= ? AND transaction_date <= ?';
                 params.push(startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10));
             } else {
-                // Para PIX e Boleto, filtrar apenas por mês/ano normal
                 sql += ' AND YEAR(transaction_date) = ? AND MONTH(transaction_date) = ?';
                 params.push(year, month);
             }
@@ -277,31 +936,164 @@ app.get('/api/expenses', authenticateToken, async (req, res) => {
             params.push(year, month);
         }
 
-        sql += ' ORDER BY transaction_date DESC';
+        // Ordenação e paginação
+        sql += ` ORDER BY ${sort_by} ${sort_order.toUpperCase()}`;
+        
+        // Aplicar limite e offset para paginação
+        const limitNum = Math.min(parseInt(limit) || 1000, 5000); // Máximo 5000 registros
+        const offsetNum = parseInt(offset) || 0;
+        sql += ` LIMIT ? OFFSET ?`;
+        params.push(limitNum, offsetNum);
+
+        // Executar query principal
         const [rows] = await pool.query(sql, params);
-        res.json(rows);
+
+        // Query para contar total de registros (para paginação)
+        let countSql = sql.replace(/SELECT[^FROM]+FROM/, 'SELECT COUNT(*) as total FROM');
+        countSql = countSql.replace(/ORDER BY[^LIMIT]+/, '');
+        countSql = countSql.replace(/LIMIT[^$]+/, '');
+        
+        const countParams = params.slice(0, -2); // Remover LIMIT e OFFSET
+        const [countResult] = await pool.query(countSql, countParams);
+        const totalRecords = countResult[0].total;
+
+        // Calcular estatísticas
+        let statsSql = sql.replace(/SELECT[^FROM]+FROM/, 'SELECT SUM(amount) as total_amount, AVG(amount) as avg_amount FROM');
+        statsSql = statsSql.replace(/ORDER BY[^LIMIT]+/, '');
+        statsSql = statsSql.replace(/LIMIT[^$]+/, '');
+        
+        const [statsResult] = await pool.query(statsSql, countParams);
+        const stats = statsResult[0];
+
+        console.log(`✅ Busca de despesas: ${rows.length} registros para usuário ${userId}`);
+
+        res.json({
+            success: true,
+            data: rows.map(expense => ({
+                ...expense,
+                amount: parseFloat(expense.amount),
+                total_purchase_amount: expense.total_purchase_amount ? parseFloat(expense.total_purchase_amount) : null,
+                is_business_expense: Boolean(expense.is_business_expense),
+                has_invoice: Boolean(expense.has_invoice),
+                is_recurring_expense: Boolean(expense.is_recurring_expense)
+            })),
+            pagination: {
+                total: totalRecords,
+                limit: limitNum,
+                offset: offsetNum,
+                hasNext: (offsetNum + limitNum) < totalRecords,
+                hasPrev: offsetNum > 0
+            },
+            statistics: {
+                totalAmount: parseFloat(stats.total_amount || 0),
+                averageAmount: parseFloat(stats.avg_amount || 0),
+                count: totalRecords
+            },
+            filters: {
+                year,
+                month,
+                account,
+                start_date,
+                end_date,
+                include_recurring,
+                billing_period
+            }
+        });
+
     } catch (error) {
-        console.error('Erro ao buscar despesas:', error);
-        res.status(500).json({ message: 'Erro ao buscar despesas.' });
+        console.error('❌ Erro ao buscar despesas:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Erro ao buscar despesas.',
+            code: 'INTERNAL_ERROR'
+        });
     }
 });
 
 app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
-    const { id } = req.params;
-    const userId = req.user.id;
     try {
-        const [rows] = await pool.query('SELECT invoice_path FROM expenses WHERE id = ? AND user_id = ?', [id, userId]);
-        if (rows.length > 0 && rows[0].invoice_path) {
-            fs.unlink(rows[0].invoice_path, (err) => {
-                if (err) console.error("Erro ao apagar ficheiro antigo:", err);
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        // Validação do ID
+        const expenseId = parseInt(id);
+        if (isNaN(expenseId) || expenseId <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID da despesa inválido.',
+                code: 'INVALID_EXPENSE_ID'
             });
         }
-        const [result] = await pool.query('DELETE FROM expenses WHERE id = ? AND user_id = ?', [id, userId]);
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'Despesa não encontrada.' });
-        res.json({ message: 'Despesa apagada com sucesso!' });
+
+        // Buscar a despesa para verificar se existe e pertence ao usuário
+        const [existingExpense] = await pool.query(
+            'SELECT id, invoice_path, installment_number, total_installments FROM expenses WHERE id = ? AND user_id = ?', 
+            [expenseId, userId]
+        );
+
+        if (existingExpense.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Despesa não encontrada.',
+                code: 'EXPENSE_NOT_FOUND'
+            });
+        }
+
+        const expense = existingExpense[0];
+        const connection = await pool.getConnection();
+        
+        try {
+            await connection.beginTransaction();
+
+            // Se tem arquivo de nota fiscal, remover
+            if (expense.invoice_path) {
+                try {
+                    await fs.unlink(expense.invoice_path);
+                    console.log(`✅ Arquivo removido: ${expense.invoice_path}`);
+                } catch (fileError) {
+                    console.warn(`⚠️  Erro ao remover arquivo: ${expense.invoice_path}`, fileError.message);
+                }
+            }
+
+            // Remover a despesa
+            const [deleteResult] = await connection.query(
+                'DELETE FROM expenses WHERE id = ? AND user_id = ?', 
+                [expenseId, userId]
+            );
+
+            if (deleteResult.affectedRows === 0) {
+                throw new Error('Falha ao deletar despesa');
+            }
+
+            await connection.commit();
+            console.log(`✅ Despesa deletada: ID ${expenseId} - Usuário ${userId}`);
+
+            res.json({
+                success: true,
+                message: 'Despesa removida com sucesso!',
+                data: {
+                    deletedId: expenseId,
+                    installmentInfo: expense.total_installments > 1 ? {
+                        installment: expense.installment_number,
+                        total: expense.total_installments
+                    } : null
+                }
+            });
+
+        } catch (transactionError) {
+            await connection.rollback();
+            throw transactionError;
+        } finally {
+            connection.release();
+        }
+
     } catch (error) {
-        console.error('Erro ao apagar despesa:', error);
-        res.status(500).json({ message: 'Erro ao apagar despesa.' });
+        console.error('❌ Erro ao remover despesa:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro interno ao remover despesa.',
+            code: 'INTERNAL_ERROR'
+        });
     }
 });
 
