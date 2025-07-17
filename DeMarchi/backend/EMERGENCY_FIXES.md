@@ -1,20 +1,33 @@
-# EMERGENCY RAILWAY DEPLOYMENT FIX
+# EMERGENCY RAILWAY DEPLOYMENT FIX - UPDATED
 
-## Quick Fixes for "Cannot find module 'express'" Error
+## NEW: Robust Deployment System Implemented ✅
 
-### Solution 1: Use Dockerfile deployment (Recommended)
-1. Go to Railway dashboard
-2. Click on your service
-3. Go to Settings > Deploy
-4. Change Source to "Deploy from Git repository"
-5. Set Dockerfile path to: `DeMarchi/backend/Dockerfile.railway`
+### Latest Solution: Enhanced Railway Deployment Script
+We've implemented a multi-layer fallback system:
 
-### Solution 2: Force dependency reinstall
-Add these to Railway environment variables:
+1. **`railway-deploy.sh`** - Advanced deployment script with retry logic
+2. **`package-minimal.json`** - Minimal dependencies backup
+3. **Enhanced `nixpacks.toml`** - Aggressive dependency installation
+4. **`debug.sh`** - Comprehensive debugging tool
+
+### Quick Fix Command for Railway Console
+If you can access Railway console, run:
+```bash
+chmod +x debug.sh && ./debug.sh
+```
+
+### Solution 1: Use NEW Deployment Script (Recommended)
+✅ Already configured in railway.toml
+- Automatic retry with multiple strategies
+- Fallback to minimal package.json
+- Individual module installation as last resort
+
+### Solution 2: Force clean installation
+Set these Railway environment variables:
 ```
 NIXPACKS_NO_CACHE=1
 NPM_CONFIG_PREFER_OFFLINE=false
-NIXPACKS_INSTALL_CMD=npm ci --force
+FORCE_CLEAN_INSTALL=true
 ```
 
 ### Solution 3: Manual package.json fix

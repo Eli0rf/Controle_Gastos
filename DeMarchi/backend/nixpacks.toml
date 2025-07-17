@@ -3,12 +3,15 @@ nodejs = "20.x"
 
 [build]
 cmds = [
-    "npm ci --only=production --no-fund --no-audit --ignore-scripts",
-    "npm cache clean --force"
+    "npm cache clean --force",
+    "rm -rf node_modules package-lock.json",
+    "npm install --force --verbose --no-fund --no-audit",
+    "npm list express || npm install express@^4.19.2 --force",
+    "ls -la node_modules/ | grep express || echo 'Express verification failed'"
 ]
 
 [start]
-cmd = "npm start"
+cmd = "chmod +x railway-deploy.sh && ./railway-deploy.sh"
 
 [variables]
 NODE_ENV = "production"
