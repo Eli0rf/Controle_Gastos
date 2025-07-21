@@ -33,33 +33,43 @@ $opcao = Read-Host "Escolha uma opção (1-5)"
 
 switch ($opcao) {
     "1" {
-        Write-Host "🔧 Fazendo deploy do Backend..." -ForegroundColor Blue
-        Set-Location "DeMarchi\backend"
-        railway service backend
-        railway up --detach
-        Set-Location "..\.."
-        Write-Host "✅ Deploy Backend iniciado!" -ForegroundColor Green
+        Write-Host "🔧 Fazendo deploy do Backend via GitHub..." -ForegroundColor Blue
+        Write-Host "📤 Fazendo push das mudanças para GitHub..." -ForegroundColor Yellow
+        git add .
+        $commitMsg = Read-Host "Digite a mensagem do commit (ou Enter para usar padrão)"
+        if ([string]::IsNullOrWhiteSpace($commitMsg)) {
+            $commitMsg = "Deploy: Backend update - $(Get-Date -Format 'dd/MM/yyyy HH:mm')"
+        }
+        git commit -m "$commitMsg"
+        git push origin main
+        Write-Host "✅ Push realizado! Railway fará deploy automático do GitHub" -ForegroundColor Green
+        Write-Host "🔗 Acompanhe em: https://railway.com/project/d5087728-9c34-44b6-91fe-33c58052bfd4" -ForegroundColor Cyan
     }
     "2" {
-        Write-Host "🔧 Fazendo deploy do Frontend..." -ForegroundColor Blue
-        Set-Location "DeMarchi\FrontEnd"
-        railway service frontend
-        railway up --detach
-        Set-Location "..\.."
-        Write-Host "✅ Deploy Frontend iniciado!" -ForegroundColor Green
+        Write-Host "🔧 Fazendo deploy do Frontend via GitHub..." -ForegroundColor Blue
+        Write-Host "📤 Fazendo push das mudanças para GitHub..." -ForegroundColor Yellow
+        git add .
+        $commitMsg = Read-Host "Digite a mensagem do commit (ou Enter para usar padrão)"
+        if ([string]::IsNullOrWhiteSpace($commitMsg)) {
+            $commitMsg = "Deploy: Frontend update - $(Get-Date -Format 'dd/MM/yyyy HH:mm')"
+        }
+        git commit -m "$commitMsg"
+        git push origin main
+        Write-Host "✅ Push realizado! Railway fará deploy automático do GitHub" -ForegroundColor Green
+        Write-Host "🔗 Acompanhe em: https://railway.com/project/d5087728-9c34-44b6-91fe-33c58052bfd4" -ForegroundColor Cyan
     }
     "3" {
-        Write-Host "🔧 Fazendo deploy do Backend..." -ForegroundColor Blue
-        Set-Location "DeMarchi\backend"
-        railway service backend
-        railway up --detach
-        
-        Write-Host "🔧 Fazendo deploy do Frontend..." -ForegroundColor Blue
-        Set-Location "..\FrontEnd"
-        railway service frontend
-        railway up --detach
-        Set-Location "..\.."
-        Write-Host "✅ Ambos os deploys iniciados!" -ForegroundColor Green
+        Write-Host "🔧 Fazendo deploy completo via GitHub..." -ForegroundColor Blue
+        Write-Host "📤 Fazendo push das mudanças para GitHub..." -ForegroundColor Yellow
+        git add .
+        $commitMsg = Read-Host "Digite a mensagem do commit (ou Enter para usar padrão)"
+        if ([string]::IsNullOrWhiteSpace($commitMsg)) {
+            $commitMsg = "Deploy: Full stack update - Backend + Frontend - $(Get-Date -Format 'dd/MM/yyyy HH:mm')"
+        }
+        git commit -m "$commitMsg"
+        git push origin main
+        Write-Host "✅ Push realizado! Railway fará deploy automático de ambos os serviços" -ForegroundColor Green
+        Write-Host "🔗 Acompanhe em: https://railway.com/project/d5087728-9c34-44b6-91fe-33c58052bfd4" -ForegroundColor Cyan
     }
     "4" {
         Write-Host "📊 Logs dos Serviços:" -ForegroundColor Blue
