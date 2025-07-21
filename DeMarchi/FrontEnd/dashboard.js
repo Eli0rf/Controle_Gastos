@@ -6,8 +6,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ===== CONFIGURAÇÕES DO AMBIENTE =====
     const CONFIG = {
-        // URLs do Railway
-        API_BASE_URL: 'https://controlegastos-production.up.railway.app',
+        // URLs do Railway - Domínios personalizados criados
+        API_BASE_URL: window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000' 
+            : 'https://backend-production-2310c.up.railway.app',
         
         // Configurações de segurança
         TOKEN_STORAGE_KEY: 'cg_auth_token',
