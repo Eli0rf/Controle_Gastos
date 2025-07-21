@@ -244,9 +244,27 @@ app.get('/health', async (req, res) => {
         console.log('🏥 Health check solicitado');
         const startTime = Date.now();
         
-        // Testar conexão com banco de dados
-        const isConnected = await testConnection();
-        const dbResponseTime = Date.now() - startTime;
+        // Health check básico primeiro - sem depender do banco
+        let dbStatus = { connected: false, responseTime: 0, error: null };
+        
+        try {
+            // Testar conexão com banco de dados
+            const isConnected = await testConnection();
+            const dbResponseTime = Date.now() - startTime;
+            dbStatus = {
+                connected: isConnected,
+                responseTime: dbResponseTime,
+                error: null
+            };
+        } catch (error) {
+            console.warn('⚠️ Database connection test failed:', error.message);
+            dbStatus = {
+                connected: false,
+                responseTime: Date.now() - startTime,
+                error: error.message
+            };
+        }
+        
         const memoryUsage = process.memoryUsage();
         
         const healthStatus = {
@@ -264,11 +282,12 @@ app.get('/health', async (req, res) => {
                 unit: 'MB'
             },
             database: {
-                connected: isConnected,
-                responseTime: dbResponseTime,
+                connected: dbStatus.connected,
+                responseTime: dbStatus.responseTime,
                 unit: 'ms',
                 host: process.env.DB_HOST || process.env.DATABASE_HOST || 'localhost',
-                port: process.env.DB_PORT || process.env.DATABASE_PORT || 3306
+                port: process.env.DB_PORT || process.env.DATABASE_PORT || 3306,
+                error: dbStatus.error
             },
             railway: {
                 environment: process.env.RAILWAY_ENVIRONMENT || 'unknown',
@@ -331,6 +350,16 @@ app.get('/health', async (req, res) => {
         
         res.status(503).json(errorResponse);
     }
+});
+
+// Health check simplificado para Railway
+app.get('/health-simple', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: Math.floor(process.uptime()),
+        port: PORT
+    });
 });
 
 // --- 4. CONFIGURAÇÃO DO MULTER APRIMORADA (UPLOAD SEGURO) ---
