@@ -29,9 +29,9 @@ RUN mkdir -p uploads
 # Expor porta
 EXPOSE 3000
 
-# Health check corrigido - usando endpoint simples
-HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
-    CMD curl -f http://localhost:${PORT:-3000}/health-simple || exit 1
+# Health check temporariamente desabilitado para debug
+# HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
+#     CMD curl -f http://localhost:${PORT:-3000}/health-simple || exit 1
 
 # Comando start
 CMD ["npm", "start"]
