@@ -373,6 +373,15 @@ app.get('/health-simple', (req, res) => {
     }
 });
 
+// Health check ultra-simples - sempre responde
+app.get('/ping', (req, res) => {
+    res.status(200).send('pong');
+});
+            error: error.message
+        });
+    }
+});
+
 // Health check de fallback na raiz
 app.get('/', (req, res) => {
     res.status(200).json({
