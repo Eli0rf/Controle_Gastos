@@ -43,6 +43,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Comando para iniciar o servidor
 CMD ["npm", "start"]
-
-# Comando de start
-CMD ["npm", "start"]
