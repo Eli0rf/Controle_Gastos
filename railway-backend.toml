@@ -1,0 +1,16 @@
+# Railway configuration for GitHub auto-deployment
+# This file ensures Railway can properly build and deploy from GitHub
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "DeMarchi/backend/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health-simple"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[env]
+# Environment variables will be set in Railway dashboard
+# Required: DATABASE_URL, JWT_SECRET, PORT

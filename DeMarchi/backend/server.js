@@ -354,11 +354,37 @@ app.get('/health', async (req, res) => {
 
 // Health check simplificado para Railway
 app.get('/health-simple', (req, res) => {
+    try {
+        res.status(200).json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            uptime: Math.floor(process.uptime()),
+            port: PORT,
+            service: 'backend',
+            version: '3.0.0'
+        });
+    } catch (error) {
+        console.error('Health check simples falhou:', error);
+        res.status(503).json({
+            status: 'error',
+            timestamp: new Date().toISOString(),
+            error: error.message
+        });
+    }
+});
+
+// Health check de fallback na raiz
+app.get('/', (req, res) => {
     res.status(200).json({
-        status: 'ok',
+        message: 'Controle de Gastos API - Backend v3.0',
+        status: 'running',
         timestamp: new Date().toISOString(),
-        uptime: Math.floor(process.uptime()),
-        port: PORT
+        endpoints: {
+            health: '/health',
+            healthSimple: '/health-simple',
+            auth: '/api/auth',
+            expenses: '/api/expenses'
+        }
     });
 });
 
