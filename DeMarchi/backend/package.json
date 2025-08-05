@@ -4,7 +4,7 @@
   "description": "Backend otimizado para Railway com segurança máxima e performance aprimorada",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node test-server.js",
     "dev": "nodemon server.js",
     "test": "node test-local.js",
     "test-health": "curl -f http://localhost:${PORT:-3000}/health-simple || exit 1",
