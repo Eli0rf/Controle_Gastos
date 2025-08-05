@@ -35,6 +35,11 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Endpoint de ping para healthcheck
+app.get('/ping', (req, res) => {
+    res.status(200).send('pong');
+});
+
 // Validação de variáveis de ambiente críticas - Railway compatível
 const requiredEnvVars = ['JWT_SECRET'];
 const optionalDbVars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'DATABASE_HOST', 'DATABASE_USER', 'DATABASE_PASSWORD', 'DATABASE_NAME', 'DATABASE_URL'];
