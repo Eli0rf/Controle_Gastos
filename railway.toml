@@ -1,12 +1,10 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+builder = "NIXPACKS"
 
 [deploy]
-startCommand = "cd DeMarchi/backend && npm install && npm start"
-healthcheckPath = "/ping"
-healthcheckTimeout = 300
-healthcheckInterval = 45
+startCommand = "cd DeMarchi/backend && npm install && node server.js"
+healthcheckPath = "/"
+healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
